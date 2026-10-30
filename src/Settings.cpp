@@ -17,11 +17,9 @@ namespace Settings
 		std::mutex                 lock;
 		std::atomic<std::uint32_t> revision{ 1 };
 
-		std::filesystem::path Path()
-		{
-			auto dir = SKSE::log::log_directory();
-			return dir ? *dir / "ResponsiveGrounds.json" : std::filesystem::path("ResponsiveGrounds.json");
-		}
+		// next to the plugin; under Mod Organizer 2 the file lands in its overwrite folder (no mod ships it, so updating
+		// the mod never replaces it)
+		std::filesystem::path Path() { return "Data/SKSE/Plugins/ResponsiveGrounds.json"; }
 
 		template <class T>
 		void Read(const json& a_obj, const char* a_key, T& a_value)
@@ -209,7 +207,9 @@ namespace Settings
 		for (std::size_t k = 0; k < kKinds; ++k) {
 			root[kKeys[k]] = WriteKind(values.kinds[k]);
 		}
-		const auto    path = Path();
+		const auto      path = Path();
+		std::error_code error;
+		std::filesystem::create_directories(path.parent_path(), error);
 		std::ofstream file(path, std::ios::trunc);
 		if (!file) {
 			logs::error("can't write {}", path.string());

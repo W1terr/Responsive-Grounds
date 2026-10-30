@@ -12,7 +12,7 @@ SKSE plugin for Skyrim SE / AE: the ground answers to everything that moves on i
 - Every landscape texture can be added to or taken out of each kind, with its own amount, in the menu.
 - Menu in English, French, German, Italian, Spanish, Polish, Russian, Japanese and Chinese.
 
-Settings: SKSE Menu Framework > Responsive Grounds (saved to `Documents\My Games\Skyrim Special Edition\SKSE\ResponsiveGrounds.json`).
+Settings: SKSE Menu Framework > Responsive Grounds (saved to `Data\SKSE\Plugins\ResponsiveGrounds.json`; with Mod Organizer 2 it ends up in the overwrite folder).
 
 Requires SKSE and Address Library for SKSE Plugins; SKSE Menu Framework 3 for the in-game menu. No plugin (esp) needed.
 
