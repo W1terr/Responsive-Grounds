@@ -1,6 +1,7 @@
 #include "Particles.h"
 
 #include "Settings.h"
+#include "Sounds.h"
 #include "Terrain.h"
 
 namespace Particles
@@ -9,10 +10,12 @@ namespace Particles
 	{
 		using Vec = RE::NiPoint3;
 		using Settings::Kind;
+		using Settings::Flutters;
+		using Settings::IsLeaves;
 		using Settings::kKinds;
 
-		constexpr auto kLeafModel = "ResponsiveGrounds\\Leaves.nif";        // Leaf0 ... Leaf7: 2 shapes x natural, golden, red, brown
-		constexpr auto kDebrisModel = "ResponsiveGrounds\\Particles.nif";   // RockPebble0-3, DirtClod0-3, RockDust0-1, DirtDust0-3
+		constexpr auto kLeafModel = "ResponsiveGrounds\\Leaves.nif";        // Leaf0 ... Leaf7: 2 shapes x natural, golden, red, brown; GreenLeaf0 ... 7 the same green
+		constexpr auto kDebrisModel = "ResponsiveGrounds\\Particles.nif";   // RockPebble0-3, DirtClod0-3, RockDust0-1, DirtDust0-3, SnowFlake0-3
 
 		constexpr float kMaxAirTime = 9.0f;
 		constexpr float kSettleTime = 0.25f;   // landing: turning flat onto the ground
@@ -33,9 +36,9 @@ namespace Particles
 		constexpr float kPatchRecover = 25.0f;  // seconds for what was taken to fall to a third
 
 		// per second over full cover at a run, amount 1: leaves, dust and rock kicks (1-2 clumps + maybe a puff)
-		// per kind: leaves, dust (dirt), rocks
-		constexpr std::array<float, kKinds> kBaseRate{ 34.0f, 22.0f, 20.0f };
-		constexpr std::array<float, kKinds> kPuffChance{ 0.0f, 0.35f, 0.35f };  // a puff with a kick
+		// per kind: leaves, green leaves, dust (dirt), rocks, snow (2-3 flakes a kick)
+		constexpr std::array<float, kKinds> kBaseRate{ 34.0f, 30.0f, 22.0f, 20.0f, 26.0f };
+		constexpr std::array<float, kKinds> kPuffChance{ 0.0f, 0.0f, 0.35f, 0.35f, 0.0f };  // a puff with a kick
 
 		enum class Style : std::uint8_t
 		{
@@ -66,6 +69,7 @@ namespace Particles
 			float spinDamping;  // per second
 		};
 		constexpr Flight kLeafFlight{ 6.0f, 1.2f, 320.0f, 0.07f, 0.04f, 1.6f };  // flat leaf falls at ~55 units/s
+		constexpr Flight kFlakeFlight{ 9.0f, 3.0f, 250.0f, 0.04f, 0.09f, 1.2f };  // a snow flake: ~28 units/s, tumbling
 		constexpr Flight kClumpFlight{ 0.9f, 0.7f, 900.0f, 0.0f, 0.0f, 0.3f };   // heavy: arcs and drops
 
 		// ---- small math
@@ -230,7 +234,8 @@ namespace Particles
 			float                          alpha{ 1.0f };
 			float                          appear{ 1.0f };  // 0 just made .. 1 full size
 			bool                           bounced{ false };
-			float                          rayAt{ 0.0f };  // when its next ground ray is due at the latest
+			bool                           water{ false };  // its ground is a water surface: it floats there
+			float                          rayAt{ 0.0f };   // when its next ground ray is due at the latest
 		};
 
 		struct Pool
@@ -249,19 +254,23 @@ namespace Particles
 		enum PoolIndex : std::size_t
 		{
 			kLeafPool,
+			kGreenPool,
 			kDirtClods,
 			kDirtDust,
 			kRockPebbles,
 			kRockDust,
+			kSnowFlakes,
 			kPools
 		};
 
 		std::array<Pool, kPools> pools{ {
 			{ "leaves", Kind::kLeaves, Style::kLeaf },
+			{ "green leaves", Kind::kGreen, Style::kLeaf },
 			{ "dirt clods", Kind::kDirt, Style::kClump },
 			{ "dirt dust", Kind::kDirt, Style::kPuff },
 			{ "rock pebbles", Kind::kRock, Style::kClump },
 			{ "rock dust", Kind::kRock, Style::kPuff },
+			{ "snow flakes", Kind::kSnow, Style::kLeaf },  // fly and land like little leaves, melt soon
 		} };
 
 		const PuffLook& LookOf(const Pool& a_pool)
@@ -269,8 +278,8 @@ namespace Particles
 			return a_pool.kind == Kind::kRock ? kRockLook : kDustLook;
 		}
 
-		constexpr std::array<PoolIndex, kKinds> kMainPool{ kLeafPool, kDirtClods, kRockPebbles };
-		constexpr std::array<PoolIndex, kKinds> kPuffPool{ kPools, kDirtDust, kRockDust };
+		constexpr std::array<PoolIndex, kKinds> kMainPool{ kLeafPool, kGreenPool, kDirtClods, kRockPebbles, kSnowFlakes };
+		constexpr std::array<PoolIndex, kKinds> kPuffPool{ kPools, kPools, kDirtDust, kRockDust, kPools };
 
 		std::vector<RE::NiPointer<RE::NiNode>> models;     // the loaded models, kept so their shapes keep their parent
 		RE::NiPointer<RE::NiNode>              container;  // our node in the scene, parent of every particle
@@ -305,6 +314,15 @@ namespace Particles
 			int         material{ -1 };         // an object: Terrain::Materials() index (-1: none of them)
 			std::string model;                  // the object's model, for the log
 			std::string layerColor;             // its painted on layer's color, for the log
+			bool        groundLike{ false };    // ground to walk on at any height (landscape pieces, rocks, cliffs, streets), not a thing standing on it
+
+			// landscape textures on the object (Terrain file index, share of the object), shapes whose texture names
+			// tell what they are (Terrain::Materials() index, share: a dirt cliff's face, a mountain's slabs), and the
+			// share of the rest (that goes by the collision material under your feet)
+			std::vector<std::pair<int, float>> textures;
+			std::vector<std::pair<int, float>> named;
+			float                              otherShare{ 1.0f };
+			std::string                        texture;  // the biggest of them, for the status
 		};
 
 		struct SupportCache
@@ -345,6 +363,7 @@ namespace Particles
 			// the ground
 			bool            onLand{ false };
 			bool            onObject{ false };
+			bool            raised{ false };  // up on an object that isn't ground (a log pile): kicks up nothing
 			bool            supported{ false };
 			bool            swimming{ false };
 			bool            canKick{ false };
@@ -402,7 +421,9 @@ namespace Particles
 		Vec              wind;
 		Vec              cameraPos;
 		Vec              cameraFwd{ 0.0f, 1.0f, 0.0f };  // horizontal
-		const char*      objectName{ "" };  // what you stand on, for the status
+		std::string      objectName;         // what you stand on, for the status: a material ...
+		std::string      objectTexture;      // ... or the landscape texture painted on it
+		bool             raised{ false };    // up on something that isn't ground
 
 		std::atomic<bool> testRequested{ false };
 
@@ -412,6 +433,14 @@ namespace Particles
 		std::vector<RE::FormID> shoutSignals;
 		std::vector<RE::FormID> hitSignals;
 		std::vector<RE::FormID> deathSignals;
+
+		struct Blast
+		{
+			Vec   at;
+			float radius;
+		};
+		std::vector<Blast> blastSignals;  // explosions from the hook (any thread) ...
+		std::vector<Blast> blasts;        // ... and the ones this frame still has to send out
 
 		// bodies of the ones just killed, watched until they hit the ground
 		struct Corpse
@@ -463,7 +492,8 @@ namespace Particles
 			return total;
 		}
 
-		// which shape a new leaf gets: columns natural, golden, red, brown; rows two leaf shapes
+		// which shape a new leaf gets: columns natural, golden, red, brown (green, yellow green, dark green, olive); rows
+		// two leaf shapes
 		std::size_t PickTemplate(const Pool& a_pool)
 		{
 			const auto count = a_pool.templates.size();
@@ -546,6 +576,19 @@ namespace Particles
 				}
 			}
 			return oldestAge >= 0.0f ? oldest : nullptr;
+		}
+
+		// the water surface over a point, if there is water above a_above (rivers, lakes, the sea)
+		bool WaterAt(const Vec& a_pos, float a_above, float& a_water)
+		{
+			const auto tes = RE::TES::GetSingleton();
+			const auto cell = tes ? tes->GetCell(a_pos) : nullptr;
+			float      height = 0.0f;
+			if (!cell || !cell->GetWaterHeight(a_pos, height) || height <= a_above || height > a_pos.z + 400.0f) {
+				return false;
+			}
+			a_water = height;
+			return true;
 		}
 
 		float LandHeight(const Vec& a_pos, float a_fallback)
@@ -653,6 +696,7 @@ namespace Particles
 			a_p.groundTimer = 0.0f;
 			a_p.rayAt = 0.0f;
 			a_p.bounced = false;
+			a_p.water = false;
 			a_p.alpha = 1.0f;
 			a_p.appear = 1.0f;
 			a_p.node->SetAppCulled(false);
@@ -675,7 +719,7 @@ namespace Particles
 				}
 				const float tiltAngle = Random(0.0f, 6.2832f);
 				a_p.rot = Normalized(Mul(AxisAngle({ std::cos(tiltAngle), std::sin(tiltAngle), 0.0f }, Gauss(0.35f)), r));
-				a_p.size = Random(0.8f, 1.25f) * tuning.kinds[Kind::kLeaves].size;
+				a_p.size = (a_pool.kind == Kind::kSnow ? Random(0.5f, 1.4f) : Random(0.8f, 1.25f)) * tuning.kinds[a_pool.kind].size;
 				Seed(a_p);
 			}
 			a_p.scale = a_p.size;
@@ -683,6 +727,9 @@ namespace Particles
 			Show(a_pool, a_p, a_sideSign);
 			if (a_fresh) {
 				a_p.appear = 0.0f;
+			}
+			if (IsLeaves(a_pool.kind)) {
+				Sounds::Request(Sounds::Sound::kLeaves, a_p.pos, a_fresh ? 1.0f : 0.6f);
 			}
 		}
 
@@ -763,30 +810,34 @@ namespace Particles
 		// one kick of a kind from a spot around the current mover's feet, if the ground there has it
 		void Kick(Kind a_kind, const Vec& a_at, float a_kick, float a_sideSign, bool a_anyGround)
 		{
-			if (!a_anyGround && Random(0.0f, 1.0f) >= CoverAt(a_at)[a_kind] * (a_kind == Kind::kLeaves ? LeavesLeft(a_at) : 1.0f)) {
+			if (!a_anyGround && Random(0.0f, 1.0f) >= CoverAt(a_at)[a_kind] * (IsLeaves(a_kind) ? LeavesLeft(a_at) : 1.0f)) {
 				return;
 			}
-			if (a_kind == Kind::kLeaves && !a_anyGround) {
+			const float ground = SurfaceAt(a_at);
+			if (float water = 0.0f; WaterAt(a_at, ground + 2.0f, water)) {
+				return;  // under water: nothing flies up
+			}
+			if (IsLeaves(a_kind) && !a_anyGround) {
 				TakeLeaf(a_at);
 			}
-			const float ground = SurfaceAt(a_at);
 			const auto  mainIndex = kMainPool[a_kind];
-			const int   count = a_kind == Kind::kLeaves ? 1 : (Random(0.0f, 1.0f) < 0.4f ? 2 : 1);
+			const int   count = a_kind == Kind::kSnow ? (Random(0.0f, 1.0f) < 0.5f ? 3 : 2) : IsLeaves(a_kind) ? 1 : (Random(0.0f, 1.0f) < 0.4f ? 2 : 1);
+			const float spread = a_kind == Kind::kSnow ? 4.0f : 2.0f;
 			for (int i = 0; i < count; ++i) {
 				auto&      main = pools[mainIndex];
 				const auto p = Acquire(main);
 				if (!p || !p->node) {
 					break;
 				}
-				p->pos = { a_at.x + Gauss(2.0f), a_at.y + Gauss(2.0f), ground + 0.5f };
+				p->pos = { a_at.x + Gauss(spread), a_at.y + Gauss(spread), ground + 0.5f };
 				p->ground = ground;
-				if (a_kind == Kind::kLeaves) {
+				if (Flutters(a_kind)) {
 					LaunchLeaf(main, *p, a_kick, a_sideSign, true);
 				} else {
 					LaunchClump(main, *p, a_kind, a_kick, a_sideSign);
 				}
 			}
-			if (a_kind != Kind::kLeaves && tuning.puffs && Random(0.0f, 1.0f) < kPuffChance[a_kind]) {
+			if (!Flutters(a_kind) && tuning.puffs && Random(0.0f, 1.0f) < kPuffChance[a_kind]) {
 				auto&      puffs = pools[kPuffPool[a_kind]];
 				const auto p = Acquire(puffs);
 				if (p && p->node) {
@@ -839,7 +890,7 @@ namespace Particles
 				}
 				p->pos = { a_at.x, a_at.y, a_ground + 0.5f };
 				p->ground = a_ground;
-				if (a_kind == Kind::kLeaves) {
+				if (Flutters(a_kind)) {
 					LaunchLeaf(pool, *p, 0.6f, 0.0f, true);
 				} else {
 					LaunchClump(pool, *p, a_kind, 0.6f, 0.0f);
@@ -935,10 +986,10 @@ namespace Particles
 			if (faceDown) {
 				rest = Mul(rest, AxisAngle({ 0.0f, 1.0f, 0.0f }, 3.1416f));
 			}
-			const auto  surface = CastDown(a_p.pos + Vec{ 0.0f, 0.0f, 15.0f }, 60.0f);
-			const float h0 = surface.hit ? surface.z : LandHeight(a_p.pos, a_p.ground);
-			Vec         slope = surface.normal;
-			if (!surface.hit) {
+			const auto  surface = a_p.water ? Surface{} : CastDown(a_p.pos + Vec{ 0.0f, 0.0f, 15.0f }, 60.0f);
+			const float h0 = a_p.water ? a_p.ground : surface.hit ? surface.z : LandHeight(a_p.pos, a_p.ground);
+			Vec         slope = a_p.water ? kUp : surface.normal;
+			if (!surface.hit && !a_p.water) {
 				const float hx = LandHeight(a_p.pos + Vec{ 4.0f, 0.0f, 0.0f }, h0);
 				const float hy = LandHeight(a_p.pos + Vec{ 0.0f, 4.0f, 0.0f }, h0);
 				slope = { -(hx - h0) / 4.0f, -(hy - h0) / 4.0f, 1.0f };
@@ -947,7 +998,7 @@ namespace Particles
 			a_p.restRot = Normalized(Mul(Between(kUp, slope), rest));
 			// leaves are cupped (face down they stand on the rim), clumps domed (face up they stand on the rim)
 			const bool  leaf = a_pool.style == Style::kLeaf;
-			const float rim = leaf ? (faceDown ? 1.0f * a_p.size : 0.35f) : (faceDown ? 0.15f : 0.55f * a_p.size);
+			const float rim = a_p.water ? 0.25f : a_pool.kind == Kind::kSnow ? 0.2f : leaf ? (faceDown ? 1.0f * a_p.size : 0.35f) : (faceDown ? 0.15f : 0.55f * a_p.size);
 			a_p.restZ = h0 + rim;
 			a_p.ground = h0;
 			a_p.settleFrom = a_p.rot;
@@ -958,7 +1009,11 @@ namespace Particles
 			a_p.timer = 0.0f;
 			switch (a_pool.kind) {
 			case Kind::kLeaves:
-				a_p.restFor = tuning.groundTime * Random(0.7f, 1.3f);
+			case Kind::kGreen:
+				a_p.restFor = tuning.groundTime * (a_p.water ? Random(1.5f, 2.5f) : Random(0.7f, 1.3f));  // floating a while
+				break;
+			case Kind::kSnow:
+				a_p.restFor = Random(0.3f, 0.9f);  // melts into the snow
 				break;
 			default:
 				a_p.restFor = Random(1.0f, 2.5f);
@@ -1006,15 +1061,27 @@ namespace Particles
 				} else {
 					a_p.ground = land;
 				}
+				// leaves (and snow flakes) come down on the water and float there
+				a_p.water = false;
+				if (float water = 0.0f; Flutters(a_pool.kind) && a_p.pos.z - a_p.ground < 400.0f && WaterAt(a_p.pos, a_p.ground, water)) {
+					a_p.ground = water;
+					a_p.water = true;
+				}
 			}
 			if (a_p.pos.z <= a_p.ground + 0.55f && a_p.vel.z <= 0.0f) {
 				if (a_pool.style == Style::kClump && !a_p.bounced && a_p.vel.z < -150.0f) {
 					// a clod or pebble bounces once
 					a_p.bounced = true;
+					if (a_pool.kind == Kind::kRock) {
+						Sounds::Request(Sounds::Sound::kPebbles, a_p.pos, 1.0f);
+					}
 					a_p.pos.z = a_p.ground + 0.6f;
 					a_p.vel = { a_p.vel.x * 0.5f, a_p.vel.y * 0.5f, -a_p.vel.z * 0.3f };
 					a_p.spin *= 0.6f;
 				} else {
+					if (a_pool.style == Style::kClump && a_pool.kind == Kind::kRock) {
+						Sounds::Request(Sounds::Sound::kPebbles, a_p.pos, 0.6f);
+					}
 					Land(a_pool, a_p);
 				}
 			} else if (a_p.timer > kMaxAirTime) {
@@ -1058,7 +1125,7 @@ namespace Particles
 				if (a_pool.style == Style::kPuff) {
 					Drift(a_pool, a_p, a_dt);
 				} else {
-					Fly(a_pool, a_p, a_pool.style == Style::kLeaf ? kLeafFlight : kClumpFlight, a_dt);
+					Fly(a_pool, a_p, a_pool.kind == Kind::kSnow ? kFlakeFlight : a_pool.style == Style::kLeaf ? kLeafFlight : kClumpFlight, a_dt);
 				}
 				break;
 			case Phase::kSettle:
@@ -1075,6 +1142,18 @@ namespace Particles
 				}
 			case Phase::kGround:
 				{
+					// floating on water: bobbing, drifting with the wind and the water, turning slowly
+					if (a_p.water) {
+						const Vec drift{ std::sin(clock * 0.31f + a_p.seed[0] * 4.0f), std::cos(clock * 0.27f + a_p.seed[1] * 4.0f), 0.0f };
+						a_p.pos += (Flat(wind) * 0.06f + drift * 4.0f) * a_dt;
+						a_p.pos.z = a_p.restZ + 0.3f * std::sin(clock * 1.7f + a_p.seed[2] * 6.0f);
+						a_p.rot = Normalized(Mul(AxisAngle(kUp, 0.25f * a_p.swirlSign * a_dt), a_p.rot));
+						if (a_p.timer >= a_p.restFor) {
+							a_p.phase = Phase::kFade;  // soaks and sinks
+							a_p.timer = 0.0f;
+						}
+						break;
+					}
 					// a leaf walked through again: kicked back up
 					if (a_pool.style == Style::kLeaf) {
 						for (const auto& m : movers) {
@@ -1147,16 +1226,19 @@ namespace Particles
 			tuning.slamStrength = s.slamStrength;
 			tuning.bodies = s.bodies;
 			tuning.bodyStrength = s.bodyStrength;
+			tuning.explosions = s.explosions;
+			tuning.explosionStrength = s.explosionStrength;
 			tuning.wind = s.wind;
 			tuning.windAmount = s.windAmount;
 			tuning.windFlip = s.windFlip;
 			tuning.debugLog = s.debugLog;
+			Sounds::Configure(s.enabled && s.sounds, s.leafVolume, s.rockVolume);
 
-			// leaves get their whole limit; dust and rocks split theirs: three quarters clumps, a quarter puffs
+			// leaves (both kinds) and snow get their whole limit; dust and rocks split theirs: three quarters clumps, a quarter puffs
 			for (std::size_t k = 0; k < kKinds; ++k) {
 				const auto max = static_cast<std::size_t>(tuning.kinds[k].enabled ? tuning.kinds[k].maxParticles : 0);
-				if (k == Kind::kLeaves) {
-					pools[kLeafPool].capacity = max;
+				if (Flutters(static_cast<Kind>(k))) {
+					pools[kMainPool[k]].capacity = max;
 				} else {
 					pools[kMainPool[k]].capacity = max * 3 / 4;
 					pools[kPuffPool[k]].capacity = tuning.puffs ? max - max * 3 / 4 : 0;
@@ -1245,6 +1327,8 @@ namespace Particles
 			next.flying = flyingCount;
 			next.landed = landedCount;
 			next.object = you.onObject ? objectName : "";
+			next.objectTexture = you.onObject ? objectTexture : "";
+			next.raised = you.onObject && raised;
 			next.npcs = static_cast<int>(movers.size()) - 1;
 			if (a_covers) {
 				next.covers = *a_covers;
@@ -1259,9 +1343,10 @@ namespace Particles
 			}
 			if (tuning.debugLog && logTimer <= 0.0f) {
 				logTimer = 2.0f;
-				logs::info("status: on land {}, ground '{}' {:.0f}%, cover leaves {:.2f} dust {:.2f} rocks {:.2f}, speed {:.0f}, kick {:.2f}{}, NPCs {}, waves {}, flying {}/{}/{}, landed {}/{}/{}",
-					a_grounded, next.texture, next.textureShare * 100.0f, next.covers[0], next.covers[1], next.covers[2], you.speed, you.kick, you.mounted ? " (horse)" : "",
-					next.npcs, waves.size(), next.flying[0], next.flying[1], next.flying[2], next.landed[0], next.landed[1], next.landed[2]);
+				logs::info("status: on land {}, ground '{}' {:.0f}%, cover leaves {:.2f} green {:.2f} dust {:.2f} rocks {:.2f} snow {:.2f}, speed {:.0f}, kick {:.2f}{}, NPCs {}, waves {}, flying {}/{}/{}/{}/{}, landed {}/{}/{}/{}/{}",
+					a_grounded, next.texture, next.textureShare * 100.0f, next.covers[0], next.covers[1], next.covers[2], next.covers[3], next.covers[4], you.speed, you.kick,
+					you.mounted ? " (horse)" : "", next.npcs, waves.size(), next.flying[0], next.flying[1], next.flying[2], next.flying[3], next.flying[4], next.landed[0],
+					next.landed[1], next.landed[2], next.landed[3], next.landed[4]);
 			}
 			std::scoped_lock guard(status_lock);
 			status = std::move(next);
@@ -1412,8 +1497,8 @@ namespace Particles
 			if (const float flat = push.Length(); flat > 450.0f) {
 				push *= 450.0f / flat;
 			}
-			if (a_kind == Kind::kLeaves) {
-				auto&      pool = pools[kLeafPool];
+			if (Flutters(a_kind)) {
+				auto&      pool = pools[kMainPool[a_kind]];
 				const auto p = Acquire(pool);
 				if (!p || !p->node) {
 					return;
@@ -1449,6 +1534,26 @@ namespace Particles
 			wave.reach = a_reach;
 			wave.strength = a_strength;
 			waves.push_back(wave);
+		}
+
+		// an explosion near the ground: a fast ring as wide as the blast blows everything away from it
+		void Explode(const Blast& a_blast, const Vec& a_you)
+		{
+			if (!tuning.explosions || tuning.explosionStrength <= 0.0f || (a_blast.at - a_you).Length() > 5000.0f) {
+				return;
+			}
+			const float radius = a_blast.radius > 0.0f ? a_blast.radius : 150.0f;
+			const float ground = GroundAt(a_blast.at, LandHeight(a_blast.at, a_blast.at.z - 1000.0f));
+			if (a_blast.at.z - ground > std::max(0.8f * radius, 120.0f)) {
+				return;  // high in the air: the blast doesn't reach the ground
+			}
+			const float reach = std::clamp(radius * 1.4f, 160.0f, 1000.0f);
+			const float strength = std::clamp(0.5f + radius / 350.0f, 0.5f, 1.6f) * tuning.explosionStrength;
+			StartWave({ a_blast.at.x, a_blast.at.y, ground }, {}, -1.0f, 900.0f, reach, strength);
+			if (tuning.debugLog) {
+				logs::info("an explosion (radius {:.0f}) at {:.0f}, {:.0f}, {:.0f}: a ring of strength {:.2f}, {:.0f} units wide", radius, a_blast.at.x, a_blast.at.y,
+					a_blast.at.z, strength, 2.0f * reach);
+			}
 		}
 
 		void Slam(Mover& a_m, const Vec& a_at, float a_strength, const char* a_how)
@@ -1528,7 +1633,7 @@ namespace Particles
 						if (!tuning.kinds[k].enabled) {
 							continue;
 						}
-						const float rate = (k == Kind::kLeaves ? 45.0f : 6.0f) * tuning.kinds[k].amount * b.strength * height / 4.0f;
+						const float rate = (Flutters(static_cast<Kind>(k)) ? 45.0f : 6.0f) * tuning.kinds[k].amount * b.strength * height / 4.0f;
 						a_m.swingDebt[k] += rate * a_dt;
 						while (a_m.swingDebt[k] >= 1.0f) {
 							a_m.swingDebt[k] -= 1.0f;
@@ -1642,7 +1747,7 @@ namespace Particles
 					if (!tuning.kinds[k].enabled) {
 						continue;
 					}
-					w.debt[k] += area / 1400.0f * w.strength * fade * tuning.kinds[k].amount * (k == Kind::kLeaves ? 1.0f : 0.6f);
+					w.debt[k] += area / 1400.0f * w.strength * fade * tuning.kinds[k].amount * (Flutters(static_cast<Kind>(k)) ? 1.0f : 0.6f);
 					int count = std::min(static_cast<int>(w.debt[k]), 20);
 					w.debt[k] -= static_cast<float>(count);
 					w.debt[k] = std::min(w.debt[k], 3.0f);
@@ -1656,8 +1761,11 @@ namespace Particles
 							continue;
 						}
 						const float ground = GroundAt(at, w.origin.z);
+						if (ground - LandHeight(at, ground) > 40.0f) {
+							continue;  // a rock, a roof, a walkway: not the land whose cover this is
+						}
 						const float f = w.strength * (1.0f - 0.6f * r / w.reach);
-						Throw(static_cast<Kind>(k), at, ground, out * (Random(200.0f, 420.0f) * f), (k == Kind::kLeaves ? 220.0f : 160.0f) * f);
+						Throw(static_cast<Kind>(k), at, ground, out * (Random(200.0f, 420.0f) * f), (Flutters(static_cast<Kind>(k)) ? 220.0f : 160.0f) * f);
 					}
 				}
 			}
@@ -1698,6 +1806,100 @@ namespace Particles
 
 		// ---- what holds a mover up
 
+		// ground you walk on at any height: natural rock, cliffs, mountains and landscape pieces; not trees, logs,
+		// stumps and plants, nor buildings, docks, bridges, clutter and furniture: up on those nothing is kicked up
+		// (at the land's level they still count)
+		bool GroundLike(std::string_view a_model)
+		{
+			if (a_model.contains("\\trees\\") || a_model.contains("\\plants\\") || a_model.contains("log") || a_model.contains("stump")) {
+				return false;
+			}
+			return a_model.starts_with("landscape\\") || a_model.contains("rock") || a_model.contains("cliff") || a_model.contains("mountain") ||
+			       a_model.contains("boulder");
+		}
+
+		// what a shape's own (not landscape) texture says it is: a dirt cliff's face, a mountain's or rock's slabs, snow
+		int NamedMaterial(std::string_view a_name)
+		{
+			if (a_name.contains("snow") && !a_name.contains("ice")) {
+				return Terrain::MaterialIndex("Snow covered");
+			}
+			if (a_name.contains("dirt") || a_name.contains("mud")) {
+				return Terrain::MaterialIndex("Dirt");
+			}
+			if (a_name.contains("mountain") || a_name.contains("rock") || a_name.contains("cliff") || a_name.contains("slab") || a_name.contains("boulder")) {
+				return Terrain::MaterialIndex("Rock");
+			}
+			return -1;
+		}
+
+		// The landscape textures painted on an object (its shapes' diffuse textures after texture swaps), each by the
+		// share of the object it covers (by bound size), and the shapes whose own texture names tell what they are
+		void ObjectTextures(RE::TESObjectREFR* a_ref, SupportInfo& a_info)
+		{
+			const auto root = a_ref ? a_ref->Get3D() : nullptr;
+			if (!root) {
+				return;
+			}
+			float total = 0.0f;
+			float best = 0.0f;
+			RE::BSVisit::TraverseScenegraphGeometries(root, [&](RE::BSGeometry* a_geometry) {
+				const auto property = a_geometry->GetGeometryRuntimeData().shaderProperty.get();
+				const auto lighting = property ? netimmerse_cast<RE::BSLightingShaderProperty*>(property) : nullptr;
+				const auto material = lighting ? static_cast<RE::BSLightingShaderMaterialBase*>(lighting->material) : nullptr;
+				if (!material || !material->textureSet) {
+					return RE::BSVisit::BSVisitControl::kContinue;
+				}
+				const float weight = a_geometry->worldBound.radius * a_geometry->worldBound.radius;
+				total += weight;
+				const char* path = material->textureSet->GetTexturePath(RE::BSTextureSet::Texture::kDiffuse);
+				if (!path) {
+					return RE::BSVisit::BSVisitControl::kContinue;
+				}
+				std::string name(path);
+				if (const auto slash = name.find_last_of("\\/"); slash != std::string::npos) {
+					name.erase(0, slash + 1);
+				}
+				std::ranges::transform(name, name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+				const int file = Terrain::FileIndex(name);
+				if (file < 0) {
+					if (const int named = NamedMaterial(name); named >= 0) {
+						auto it = std::ranges::find(a_info.named, named, &std::pair<int, float>::first);
+						if (it == a_info.named.end()) {
+							a_info.named.emplace_back(named, 0.0f);
+							it = a_info.named.end() - 1;
+						}
+						it->second += weight;
+					}
+					return RE::BSVisit::BSVisitControl::kContinue;
+				}
+				auto it = std::ranges::find(a_info.textures, file, &std::pair<int, float>::first);
+				if (it == a_info.textures.end()) {
+					a_info.textures.emplace_back(file, 0.0f);
+					it = a_info.textures.end() - 1;
+				}
+				it->second += weight;
+				if (it->second > best) {
+					best = it->second;
+					a_info.texture = name;
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+			if (total <= 0.0f) {
+				a_info.textures.clear();
+				a_info.named.clear();
+				return;
+			}
+			float matched = 0.0f;
+			for (auto* list : { &a_info.textures, &a_info.named }) {
+				for (auto& [index, share] : *list) {
+					share /= total;
+					matched += share;
+				}
+			}
+			a_info.otherShare = std::max(0.0f, 1.0f - matched);
+		}
+
 		bool Natural(std::string_view a_model)
 		{
 			return !a_model.contains("architecture") &&
@@ -1725,7 +1927,8 @@ namespace Particles
 			const auto layer = collidable->GetCollisionLayer();
 			info.layer = static_cast<int>(std::to_underlying(layer));
 			info.layerTerrain = layer == RE::COL_LAYER::kTerrain || layer == RE::COL_LAYER::kGround;
-			const auto ref = info.layerTerrain ? nullptr : RE::TESHavokUtilities::FindCollidableRef(*collidable);
+			// mountains use the terrain layer too: only the missing reference tells the landscape
+			const auto ref = RE::TESHavokUtilities::FindCollidableRef(*collidable);
 			const auto base = ref ? ref->GetBaseObject() : nullptr;
 			info.object = base != nullptr;
 			if (!info.object) {
@@ -1735,7 +1938,21 @@ namespace Particles
 			if (const auto model = base ? base->As<RE::TESModel>() : nullptr; model && model->GetModel()) {
 				info.model = model->GetModel();
 				std::ranges::transform(info.model, info.model.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+				if (info.model.starts_with("meshes\\")) {
+					info.model.erase(0, 7);
+				}
 			}
+			ObjectTextures(ref, info);
+			info.groundLike = info.otherShare < 0.7f || GroundLike(info.model);
+			// a painted on layer (snow, ash) or a snowy model lies over the shapes' own textures
+			const auto layered = [&](int a_material) {
+				for (const auto& [index, share] : info.named) {
+					info.otherShare += share;
+				}
+				info.named.clear();
+				info.material = a_material;
+				return info;
+			};
 			if (const auto stat = base ? base->As<RE::TESObjectSTAT>() : nullptr; stat && stat->data.materialObj) {
 				const auto& d = stat->data.materialObj->directionalData;
 				const auto& c = d.singlePassColor;
@@ -1743,17 +1960,14 @@ namespace Particles
 				const float high = std::max({ c.red, c.green, c.blue });
 				info.layerColor = std::format("{:.2f} {:.2f} {:.2f}{}", c.red, c.green, c.blue, d.singlePass ? "" : " (not single pass)");
 				if (d.singlePass && low >= 0.33f && c.blue >= c.red) {
-					info.material = -1;  // snow covered: nothing
-					return a_cache.info = info;
+					return a_cache.info = layered(Terrain::MaterialIndex("Snow covered"));
 				}
 				if (d.singlePass && high - low < 0.05f && low >= 0.2f && high <= 0.36f) {
-					info.material = Terrain::MaterialIndex("Ash covered");
-					return a_cache.info = info;
+					return a_cache.info = layered(Terrain::MaterialIndex("Ash covered"));
 				}
 			}
 			if (info.model.contains("snow") && !info.model.contains("ice") && !info.model.contains("glacier")) {
-				info.material = -1;  // snow in the model's own textures: nothing
-				return a_cache.info = info;
+				return a_cache.info = layered(Terrain::MaterialIndex("Snow covered"));  // snow in the model's own textures
 			}
 			info.material = Terrain::MaterialOf(a_controller->surfaceMaterial);
 			if (info.material == Terrain::MaterialIndex("Stone") && Natural(info.model)) {
@@ -1857,10 +2071,9 @@ namespace Particles
 				return;
 			}
 			mover = movers.front().get();
-			static constexpr std::array<float, kKinds> kRate{ 26.0f, 4.0f, 0.0f };
+			static constexpr std::array<float, kKinds> kRate{ 26.0f, 22.0f, 4.0f, 0.0f, 18.0f };
 			const float speed = wind.Length();
 			const float view = std::atan2(cameraFwd.y, cameraFwd.x);
-			auto&       leaves = pools[kLeafPool];
 			for (std::size_t k = 0; k < kKinds; ++k) {
 				if (!tuning.kinds[k].enabled || kRate[k] <= 0.0f) {
 					continue;
@@ -1881,11 +2094,15 @@ namespace Particles
 						continue;
 					}
 					const float ground = GroundAt(at, a_you.z);
-					if (k == Kind::kLeaves) {
+					if (ground - LandHeight(at, ground) > 40.0f) {
+						continue;  // up on a rock or a roof: not the land whose cover this is
+					}
+					if (Flutters(static_cast<Kind>(k))) {
+						auto& leaves = pools[kMainPool[k]];
 						if (leaves.active * 4 >= leaves.capacity * 3) {
 							continue;  // the last quarter stays for your steps
 						}
-						if (Random(0.0f, 1.0f) < 0.5f) {
+						if (IsLeaves(static_cast<Kind>(k)) && Random(0.0f, 1.0f) < 0.5f) {
 							// torn off the trees: already flying, drifting down across the view
 							const auto p = Acquire(leaves);
 							if (!p || !p->node) {
@@ -1896,7 +2113,7 @@ namespace Particles
 							LaunchLeaf(leaves, *p, 0.5f, 0.0f, true);
 							p->vel = windDir * (speed * Random(0.6f, 1.0f)) + kUp * Random(-20.0f, 40.0f);
 						} else {
-							Throw(Kind::kLeaves, at, ground, windDir * (speed * Random(0.5f, 0.9f)), Random(120.0f, 260.0f));
+							Throw(static_cast<Kind>(k), at, ground, windDir * (speed * Random(0.5f, 0.9f)), Random(120.0f, 260.0f));
 						}
 					} else if (tuning.puffs && kPuffPool[k] != kPools) {
 						auto&      pool = pools[kPuffPool[k]];
@@ -2024,7 +2241,29 @@ namespace Particles
 			a_m.onLand = !a_m.swimming && !support.object && (nearLand || support.layerTerrain);
 			a_m.onObject = !a_m.onLand && a_m.supported && !a_m.swimming;
 			a_m.materialIndex = a_m.onObject ? support.material : -1;
-			a_m.objectCovers = a_m.onObject ? Terrain::ObjectCover(a_m.materialIndex, pos) : Terrain::Covers{};
+			a_m.objectCovers = {};
+			// up on a thing that isn't ground (a log pile, a cart, a table): nothing to kick up there
+			a_m.raised = a_m.onObject && !support.groundLike && pos.z - land > 30.0f * a_m.footprint;
+			if (a_m.onObject && !a_m.raised) {
+				for (const auto& [file, share] : support.textures) {
+					const auto cover = Terrain::FileCover(file);
+					for (std::size_t k = 0; k < kKinds; ++k) {
+						a_m.objectCovers[k] += share * cover[k];
+					}
+				}
+				for (const auto& [named, share] : support.named) {
+					const auto cover = Terrain::ObjectCover(named, pos);
+					for (std::size_t k = 0; k < kKinds; ++k) {
+						a_m.objectCovers[k] += share * cover[k];
+					}
+				}
+				if (support.otherShare > 0.01f) {
+					const auto cover = Terrain::ObjectCover(a_m.materialIndex, pos);
+					for (std::size_t k = 0; k < kKinds; ++k) {
+						a_m.objectCovers[k] += support.otherShare * cover[k];
+					}
+				}
+			}
 			a_m.groundZ = a_m.onLand ? land : pos.z;
 			a_m.canKick = (a_m.onLand || a_m.onObject) && (!a_m.mounted || tuning.onHorse);
 			const bool moving = a_m.canKick && a_m.kick > 0.0f;
@@ -2041,31 +2280,40 @@ namespace Particles
 			if (a_m.player) {
 				lastOnLand = a_m.onLand || a_m.onObject;
 				objectName = !a_m.onObject ? "" : a_m.materialIndex >= 0 ? Terrain::Materials()[a_m.materialIndex].name : "other";
+				objectTexture = a_m.onObject && support.otherShare < 0.5f ? support.texture : "";
+				raised = a_m.raised;
 				const auto& covers = a_m.covers;
 				const auto  material = controller ? controller->surfaceMaterial : RE::MATERIAL_ID::kNone;
 				Diagnose(kLineGround,
 					(land > pos.z - 999.0f ? 1u : 0u) | (a_m.onLand ? 2u : 0u) | (a_m.swimming ? 4u : 0u) | (a_m.mounted ? 8u : 0u) | (a_m.onObject ? 16u : 0u) |
-						(static_cast<std::uint32_t>(a_m.materialIndex + 1) << 8),
+						(a_m.raised ? 32u : 0u) | (static_cast<std::uint32_t>(a_m.materialIndex + 1) << 8),
 					[&] {
-						return std::format("ground: land found {}, on the landscape {}, on an object {}{}, swimming {}, mounted {}{}, support layer {}, gives leaves {:.0f}% dust {:.0f}% rocks {:.0f}%",
+						return std::format("ground: land found {}, on the landscape {}, on an object {}{}, swimming {}, mounted {}{}, support layer {}, gives leaves {:.0f}% green leaves {:.0f}% dust {:.0f}% rocks {:.0f}% snow {:.0f}%",
 							land > pos.z - 999.0f, a_m.onLand, a_m.onObject,
-							a_m.onObject ? std::format(" ({}{}{})", a_m.materialIndex >= 0 ? Terrain::Materials()[a_m.materialIndex].name : std::format("material {}", std::to_underlying(material)),
+							a_m.onObject ? std::format(" ({}{}{}{}{})", a_m.materialIndex >= 0 ? Terrain::Materials()[a_m.materialIndex].name : std::format("material {}", std::to_underlying(material)),
 											   support.model.empty() ? "" : std::format(", {}", support.model),
-											   support.layerColor.empty() ? "" : std::format(", painted layer {}", support.layerColor)) :
+											   support.layerColor.empty() ? "" : std::format(", painted layer {}", support.layerColor),
+											   support.textures.empty() && support.named.empty() ? "" :
+																									  std::format(", textures tell {:.0f}% (landscape: {})", (1.0f - support.otherShare) * 100.0f,
+																										  support.texture.empty() ? "none" : support.texture),
+											   a_m.raised ? ", raised: not ground" : support.groundLike ? ", ground" : "") :
 										   "",
 							a_m.swimming, a_m.mounted, a_m.onLand ? "" : std::format(" ({:.0f} units above the land)", pos.z - land), support.layer, covers[0] * 100.0f,
-							covers[1] * 100.0f, covers[2] * 100.0f);
+							covers[1] * 100.0f, covers[2] * 100.0f, covers[3] * 100.0f, covers[4] * 100.0f);
 					});
 				const auto tens = [](float a_cover) { return static_cast<std::uint32_t>(std::round(a_cover * 10.0f)); };
-				Diagnose(kLineCover, tens(covers[0]) | tens(covers[1]) << 8 | tens(covers[2]) << 16, [&] {
-					return std::format("under you: leaves about {}0%, dust {}0%, rocks {}0%", tens(covers[0]), tens(covers[1]), tens(covers[2]));
+				Diagnose(kLineCover, tens(covers[0]) | tens(covers[1]) << 4 | tens(covers[2]) << 8 | tens(covers[3]) << 12 | tens(covers[4]) << 16, [&] {
+					return std::format("under you: leaves about {}0%, green leaves {}0%, dust {}0%, rocks {}0%, snow {}0%", tens(covers[0]), tens(covers[1]), tens(covers[2]),
+						tens(covers[3]), tens(covers[4]));
 				});
 
 				if (testRequested.exchange(false)) {
 					Burst(Kind::kLeaves, 30, true);
+					Burst(Kind::kGreen, 20, true);
 					Burst(Kind::kDirt, 16, true);
 					Burst(Kind::kRock, 16, true);
-					logs::info("test: threw leaves, dust and rocks around you at {:.0f}, {:.0f}, {:.0f}", pos.x, pos.y, pos.z);
+					Burst(Kind::kSnow, 14, true);
+					logs::info("test: threw leaves, green leaves, dust, rocks and snow around you at {:.0f}, {:.0f}, {:.0f}", pos.x, pos.y, pos.z);
 				}
 			}
 
@@ -2113,7 +2361,7 @@ namespace Particles
 				if (a_m.canKick && a_m.airborneFor > 0.35f) {
 					for (std::size_t k = 0; k < kKinds; ++k) {
 						if (tuning.kinds[k].enabled && a_m.covers[k] > 0.05f) {
-							const float count = (k == Kind::kLeaves ? 10.0f : 8.0f) * (a_m.mounted ? 1.8f : 1.0f) * a_m.footprint;
+							const float count = (Flutters(static_cast<Kind>(k)) ? 10.0f : 8.0f) * (a_m.mounted ? 1.8f : 1.0f) * a_m.footprint;
 							Burst(static_cast<Kind>(k), static_cast<int>(std::round(tuning.kinds[k].amount * count * a_m.covers[k])), false);
 						}
 					}
@@ -2140,6 +2388,8 @@ namespace Particles
 				PoolIndex              pool = kPools;
 				if (name.starts_with("Leaf")) {
 					pool = kLeafPool;
+				} else if (name.starts_with("GreenLeaf")) {
+					pool = kGreenPool;
 				} else if (name.starts_with("RockPebble")) {
 					pool = kRockPebbles;
 				} else if (name.starts_with("RockDust")) {
@@ -2148,6 +2398,8 @@ namespace Particles
 					pool = kDirtClods;
 				} else if (name.starts_with("DirtDust")) {
 					pool = kDirtDust;
+				} else if (name.starts_with("SnowFlake")) {
+					pool = kSnowFlakes;
 				}
 				if (pool < kPools) {
 					pools[pool].templates.emplace_back(child);
@@ -2210,6 +2462,7 @@ namespace Particles
 		}
 		flyingCount = {};
 		landedCount = {};
+		Sounds::Reset();
 		waves.clear();
 		corpses.clear();
 		patches.clear();
@@ -2221,6 +2474,8 @@ namespace Particles
 		shoutSignals.clear();
 		hitSignals.clear();
 		deathSignals.clear();
+		blastSignals.clear();
+		blasts.clear();
 	}
 
 	void Update(float a_delta)
@@ -2281,6 +2536,8 @@ namespace Particles
 			shouts.swap(shoutSignals);
 			hits.swap(hitSignals);
 			deaths.swap(deathSignals);
+			blasts.insert(blasts.end(), blastSignals.begin(), blastSignals.end());
+			blastSignals.clear();
 		}
 		for (const auto id : hits) {
 			if (const auto m = FindMover(id)) {
@@ -2323,7 +2580,7 @@ namespace Particles
 		ReadWind();
 
 		// everyone standing still with nothing in the air, no wind: nothing else to do (no ground lookups, no scene updates)
-		if (ActiveTotal() == 0 && !anyAwake && waves.empty() && corpses.empty() && WindLift() <= 0.0f && !testRequested) {
+		if (ActiveTotal() == 0 && !anyAwake && waves.empty() && corpses.empty() && blasts.empty() && WindLift() <= 0.0f && !testRequested) {
 			you.kick = 0.0f;
 			you.emitDebt = {};
 			you.stepLeft = {};
@@ -2372,7 +2629,12 @@ namespace Particles
 		Bodies(dt);
 		PrunePatches(dt);
 		WindLifts(you.pos, dt);
+		for (const auto& b : blasts) {
+			Explode(b, you.pos);
+		}
+		blasts.clear();
 		AdvanceWaves(dt);
+		Sounds::Update(dt, cameraPos);
 
 		bool anySwinging = false;
 		for (const auto& m : movers) {
@@ -2439,6 +2701,14 @@ namespace Particles
 		}
 
 		PublishStatus(dt, true, you.onLand || you.onObject, &you.covers);
+	}
+
+	void OnExplosion(const RE::NiPoint3& a_position, float a_radius)
+	{
+		std::scoped_lock guard(signalLock);
+		if (blastSignals.size() < 16) {
+			blastSignals.push_back({ a_position, a_radius });
+		}
 	}
 
 	void RequestTest() { testRequested = true; }

@@ -1,21 +1,31 @@
 """Builds the leaf assets from the vanilla aspen leaf (the flip book the Rift's falling leaves use,
 textures\\effects\\fxaspenleafanim.dds, 8 x 8 frames of one tumbling leaf):
 
-  res/textures/ResponsiveGrounds/Leaf.dds     atlas 512 x 512: 4 x 2 cells of 128 x 256, one leaf each
-  res/textures/ResponsiveGrounds/Leaf_n.dds   its normal map (veins from the leaf's own shading)
-  res/meshes/ResponsiveGrounds/Leaves.nif     one small cupped leaf mesh per atlas cell (Leaf0 ... Leaf7)
+  res/textures/ResponsiveGrounds/Leaf.dds       atlas 512 x 512: 4 x 2 cells of 128 x 256, one leaf each
+  res/textures/ResponsiveGrounds/Leaf_n.dds     its normal map (veins from the leaf's own shading)
+  res/textures/ResponsiveGrounds/GreenLeaf.dds  the same leaves green (summer forests), same layout and normal map
+  res/meshes/ResponsiveGrounds/Leaves.nif       one small cupped leaf mesh per atlas cell (Leaf0 ... Leaf7), and
+                                                the same over the green atlas (GreenLeaf0 ... GreenLeaf7)
 
 and the dirt and rock bits from vanilla effect textures (fxsnowsoftsub's soft puff shapes, fxdirtrockanim):
 
   res/textures/ResponsiveGrounds/Debris.dds   atlas 512 x 512, rows of 4: rock pebbles, dirt clods, 2 rock dust puffs (right half), dust puffs
   res/textures/ResponsiveGrounds/Debris_n.dds its normal map (domed pebbles and clods, flat puffs)
-  res/meshes/ResponsiveGrounds/Particles.nif  RockPebble0-3, DirtClod0-3 (alpha tested), RockDust0-1, DirtDust0-3 (blended)
+  res/meshes/ResponsiveGrounds/Particles.nif  RockPebble0-3, DirtClod0-3 (alpha tested), RockDust0-1, DirtDust0-3 (blended),
+                                              SnowFlake0-3 (blended, over Snow.dds)
+
+and the snow flakes, drawn here (soft little clumps of a few round blobs, bright in the middle, a little blue grey at
+the edges):
+
+  res/textures/ResponsiveGrounds/Snow.dds     atlas 256 x 256: 2 x 2 cells of 128, one flake each
+  res/textures/ResponsiveGrounds/Snow_n.dds   its normal map (domed)
 
 Cells: row 0 = frame 0 (flat, stem down), row 1 = frame 2 (flat, a little different light); columns = natural,
-golden, red, dry brown. Each mesh lies in the XY plane (front up = +Z), stem towards -Y, centered on the origin,
+golden, red, dry brown (green atlas: green, yellow green, dark green, olive). Each mesh lies in the XY plane (front up = +Z), stem towards -Y, centered on the origin,
 LEAF_W x LEAF_H units. Lit, double sided, alpha tested, no shadows cast.
 
-usage: python make_assets.py [preview.png]   (numpy, pillow, nifgen from the Blender Niftools addon)
+usage: python make_assets.py [--textures] [preview.png]   (numpy, pillow, nifgen from the Blender Niftools addon)
+       --textures: also write the (uncompressed) textures over the shipped BC7 ones
 """
 import os
 import struct
@@ -40,6 +50,7 @@ FLIPBOOK = r"textures\effects\fxaspenleafanim.dds"
 TEMPLATE = r"meshes\architecture\riften\clutter\rtleaves01.nif"  # a lit, alpha tested BSTriShape with vertex colors
 DIFFUSE_PATH = r"textures\ResponsiveGrounds\Leaf.dds"
 NORMAL_PATH = r"textures\ResponsiveGrounds\Leaf_n.dds"
+GREEN_PATH = r"textures\ResponsiveGrounds\GreenLeaf.dds"
 
 FRAMES = [(0, 0), (0, 2)]          # (row, column) of the flip book frames used
 CELL_W, CELL_H = 128, 256          # atlas cell
@@ -48,6 +59,18 @@ LEAF_W, LEAF_H = 5.0, 10.0         # mesh size in game units (the cell's area, s
 CUP = 0.45                         # edges up this much
 CURL = 0.55                        # tip and stem up this much
 ALPHA_REF = 128                    # NiAlphaProperty threshold
+BRIGHTNESS = 0.8                   # vertex colors (they multiply the textures): everything a bit darker than the textures
+
+# The shipped textures are BC7 compressions of what this writes (smaller, done by hand), so the textures are only
+# written with --textures; without it only the meshes are made.
+WRITE_TEXTURES = "--textures" in sys.argv
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+
+
+def save_texture(name, data):
+    if WRITE_TEXTURES:
+        TEXTURES.mkdir(parents=True, exist_ok=True)
+        (TEXTURES / name).write_bytes(data)
 
 
 # ---------------------------------------------------------------- textures
@@ -67,6 +90,14 @@ GRADES = [
     (0.035, 1.05, 1.18),   # golden
     (-0.045, 1.1, 0.88),   # red
     (0.0, 0.72, 0.62),     # dry brown
+]
+
+# the aspen leaf is orange (hue ~0.095): turned green, a little less saturated than the autumn ones
+GREEN_GRADES = [
+    (0.185, 0.78, 0.92),   # green
+    (0.105, 0.82, 1.05),   # yellow green
+    (0.225, 0.72, 0.68),   # dark green
+    (0.075, 0.62, 0.74),   # olive
 ]
 
 
@@ -171,22 +202,29 @@ def normal_map(rgb, alpha):
     return out
 
 
-def build_textures():
-    book = np.asarray(Image.open(gamefiles.get(FLIPBOOK)).convert("RGBA"))
+def leaf_atlas(book, grades):
     atlas = np.zeros((ROWS * CELL_H, COLS * CELL_W, 3))
     alpha = np.zeros((ROWS * CELL_H, COLS * CELL_W))
     for r, (fr, fc) in enumerate(FRAMES):
         rgb, a = frame_cell(book, fr, fc)
-        for c, (hue, sat, val) in enumerate(GRADES):
+        for c, (hue, sat, val) in enumerate(grades):
             ys, xs = slice(r * CELL_H, (r + 1) * CELL_H), slice(c * CELL_W, (c + 1) * CELL_W)
             atlas[ys, xs] = grade(rgb, hue, sat, val)
             alpha[ys, xs] = a
+    return atlas, alpha
+
+
+def build_textures():
+    book = np.asarray(Image.open(gamefiles.get(FLIPBOOK)).convert("RGBA"))
+    atlas, alpha = leaf_atlas(book, GRADES)
     rgba = np.concatenate([atlas, alpha[..., None]], axis=2)
     normals = normal_map(atlas, alpha)
-    TEXTURES.mkdir(parents=True, exist_ok=True)
-    (TEXTURES / "Leaf.dds").write_bytes(dds(mips(rgba)))
-    (TEXTURES / "Leaf_n.dds").write_bytes(dds(mips_plain(normals)))
-    return rgba
+    green, _ = leaf_atlas(book, GREEN_GRADES)
+    green_rgba = np.concatenate([green, alpha[..., None]], axis=2)
+    save_texture("Leaf.dds", dds(mips(rgba)))
+    save_texture("Leaf_n.dds", dds(mips_plain(normals)))
+    save_texture("GreenLeaf.dds", dds(mips(green_rgba)))
+    return rgba, green_rgba
 
 
 def mips_plain(img):
@@ -292,15 +330,59 @@ def build_debris():
             put(row, col, np.zeros((DEBRIS, DEBRIS, 3)) + color, a)
 
     rgba = np.concatenate([rgb, alpha[..., None]], axis=2)
-    TEXTURES.mkdir(parents=True, exist_ok=True)
     # the clump rows are alpha tested (coverage kept in the mips), the puff rows blended (plain mips)
     clump_levels = mips(rgba[: 2 * DEBRIS])
     puff_levels = mips_plain_rgba(rgba[2 * DEBRIS:])
     levels = [np.concatenate([a, b], axis=0) for a, b in zip(clump_levels, puff_levels)]
     levels = [lv for lv in levels if lv.shape[0] == lv.shape[1]]  # the halves' last levels don't stack square
-    (TEXTURES / "Debris.dds").write_bytes(dds(levels))
+    save_texture("Debris.dds", dds(levels))
     n = np.concatenate([normal, np.zeros((size, size, 1))], axis=2)
-    (TEXTURES / "Debris_n.dds").write_bytes(dds(mips_plain(n)))
+    save_texture("Debris_n.dds", dds(mips_plain(n)))
+    return rgba
+
+
+# ---------------------------------------------------------------- snow flakes
+
+FLAKE = 128                                          # atlas cell, 2 x 2 cells
+FLAKE_COLOR = np.array([236, 241, 248]) / 255.0      # lit by the scene: near white
+FLAKE_EDGE = np.array([196, 206, 222]) / 255.0       # the thin edges a little blue grey
+FLAKE_SIZE = 2.4                                     # mesh size in game units
+
+
+def build_snow():
+    rng = np.random.default_rng(7)
+    size = 2 * FLAKE
+    rgb = np.zeros((size, size, 3))
+    alpha = np.zeros((size, size))
+    normal = np.zeros((size, size, 3)) + np.array([0.5, 0.5, 1.0])
+    yy, xx = np.mgrid[0:FLAKE, 0:FLAKE] / (FLAKE - 1) * 2 - 1
+    for cell in range(4):
+        # a clump of grains: many small soft dots in a loose cluster, its edge broken up by fine noise
+        density = np.zeros((FLAKE, FLAKE))
+        grains = 14 + 6 * cell
+        spread = 0.22 + 0.04 * cell
+        for _ in range(grains):
+            cx, cy = np.clip(rng.normal(0, spread, 2), -0.6, 0.6)
+            r = rng.uniform(0.06, 0.16)
+            density += np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * r * r))
+        noise = blur(rng.random((FLAKE, FLAKE)), 3)
+        noise = (noise - noise.mean()) / (noise.std() + 1e-6)
+        density = density / max(density.max(), 1e-6) * 1.4
+        density = np.clip(density + 0.12 * noise * np.clip(density * 4, 0, 1), 0, 1)  # noise only near the grains
+        density *= np.clip((1.0 - np.hypot(xx, yy)) / 0.15, 0, 1)  # inside the cell
+        a = np.clip((density - 0.18) * 2.0, 0, 1)
+        a = blur(a, 1.5)
+        shade = np.clip(density * 1.6, 0, 1)[..., None]
+        c_rgb = FLAKE_EDGE + (FLAKE_COLOR - FLAKE_EDGE) * shade
+        r, c = divmod(cell, 2)
+        ys, xs = slice(r * FLAKE, (r + 1) * FLAKE), slice(c * FLAKE, (c + 1) * FLAKE)
+        rgb[ys, xs] = bleed(c_rgb, a)
+        alpha[ys, xs] = a
+        normal[ys, xs] = height_normals(blur(density, 10), 6.0)
+    rgba = np.concatenate([rgb, alpha[..., None]], axis=2)
+    save_texture("Snow.dds", dds(mips_plain_rgba(rgba)))
+    n = np.concatenate([normal, np.zeros((size, size, 1))], axis=2)
+    save_texture("Snow_n.dds", dds(mips_plain(n)))
     return rgba
 
 
@@ -342,7 +424,7 @@ def card_vertices(uv_box, width, height, cup, curl, grid_x, grid_y, rim_shade):
             u = u0 + (x * 0.5 + 0.5) * (u1 - u0)
             v = v0 + (0.5 - y * 0.5) * (v1 - v0)
             edge = max(abs(x), abs(y))
-            shade = int(round(255 - rim_shade * edge * edge))
+            shade = int(round((255 - rim_shade * edge * edge) * BRIGHTNESS))
             verts.append((p, n, dv, du, (u, v), (shade, shade, shade, 255)))
     return verts
 
@@ -363,10 +445,11 @@ LEAF_GRID_Y = [-1.0, -0.6, -0.2, 0.2, 0.6, 1.0]    # along it, stem (-1) to tip 
 def leaf_shapes():
     out = []
     tris = card_triangles(len(LEAF_GRID_X), len(LEAF_GRID_Y))
-    for cell in range(COLS * ROWS):
-        col, row = cell % COLS, cell // COLS
-        box = (col / COLS, row / ROWS, (col + 1) / COLS, (row + 1) / ROWS)
-        out.append((f"Leaf{cell}", card_vertices(box, LEAF_W, LEAF_H, CUP, CURL, LEAF_GRID_X, LEAF_GRID_Y, 22), tris, "leaf"))
+    for prefix, key in (("Leaf", "leaf"), ("GreenLeaf", "greenleaf")):
+        for cell in range(COLS * ROWS):
+            col, row = cell % COLS, cell // COLS
+            box = (col / COLS, row / ROWS, (col + 1) / COLS, (row + 1) / ROWS)
+            out.append((f"{prefix}{cell}", card_vertices(box, LEAF_W, LEAF_H, CUP, CURL, LEAF_GRID_X, LEAF_GRID_Y, 22), tris, key))
     return out
 
 
@@ -390,6 +473,11 @@ def debris_shapes():
                 out.append((f"{prefix}{col}", card_vertices(box, size, size, dome, dome, g3, g3, 10), clump_tris, "clump"))
             else:
                 out.append((f"{prefix}{col}", card_vertices(box, size, size, 0.0, 0.0, flat, flat, 0), flat_tris, "puff"))
+    # snow flakes: little flat cards over the snow atlas, slightly domed, tumbling like tiny leaves
+    for cell in range(4):
+        r, c = divmod(cell, 2)
+        box = (c / 2, r / 2, (c + 1) / 2, (r + 1) / 2)
+        out.append((f"SnowFlake{cell}", card_vertices(box, FLAKE_SIZE, FLAKE_SIZE, -0.08, -0.08, g3, g3, 0), clump_tris, "flake"))
     return out
 
 
@@ -416,8 +504,10 @@ def template_shape():
 # material keys -> (diffuse, normal, blended)
 MATERIALS = {
     "leaf": (DIFFUSE_PATH, NORMAL_PATH, False),
+    "greenleaf": (GREEN_PATH, NORMAL_PATH, False),
     "clump": (r"textures\ResponsiveGrounds\Debris.dds", r"textures\ResponsiveGrounds\Debris_n.dds", False),
     "puff": (r"textures\ResponsiveGrounds\Debris.dds", r"textures\ResponsiveGrounds\Debris_n.dds", True),
+    "flake": (r"textures\ResponsiveGrounds\Snow.dds", r"textures\ResponsiveGrounds\Snow_n.dds", True),
 }
 
 
@@ -533,17 +623,22 @@ def adopt(nif):
 
 
 def main():
-    rgba = build_textures()
+    rgba, green = build_textures()
     debris = build_debris()
+    snow = build_snow()
     leaves = write_nif(MESHES / "Leaves.nif", leaf_shapes())
     particles = write_nif(MESHES / "Particles.nif", debris_shapes())
-    print(f"textures -> {TEXTURES}, {leaves} leaf meshes -> Leaves.nif, {particles} dirt/rock meshes -> Particles.nif")
-    if len(sys.argv) > 1:
-        for img, out, blended in ((rgba, sys.argv[1], False), (debris, sys.argv[1].replace(".png", "_debris.png"), True)):
+    print(f"textures {'-> ' + str(TEXTURES) if WRITE_TEXTURES else 'kept (no --textures)'}, {leaves} leaf meshes -> Leaves.nif, {particles} dirt/rock meshes -> Particles.nif")
+    if ARGS:
+        for img, out, blended in ((rgba, ARGS[0], False), (green, ARGS[0].replace(".png", "_green.png"), False),
+                                  (debris, ARGS[0].replace(".png", "_debris.png"), True),
+                                  (snow, ARGS[0].replace(".png", "_snow.png"), "all")):
             bg = np.zeros_like(img[..., :3]) + np.array([0.18, 0.22, 0.16])
             a = img[..., 3:4]
             shown = np.where(a > ALPHA_REF / 255.0, img[..., :3], bg)
-            if blended:
+            if blended == "all":
+                shown = bg * (1 - a) + img[..., :3] * a
+            elif blended:
                 half = img.shape[0] // 2
                 shown[half:] = bg[half:] * (1 - a[half:]) + img[half:, :, :3] * a[half:]
             Image.fromarray((np.clip(shown, 0, 1) * 255).astype(np.uint8)).save(out)

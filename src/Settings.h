@@ -6,11 +6,18 @@ namespace Settings
 	enum Kind : std::size_t
 	{
 		kLeaves,
-		kDirt,  // shown as "Dust": dirt and mud, clods and dust puffs
-		kRock,  // pebbles and rock dust
+		kGreen,  // green leaves (summer forests): the same leaves, green
+		kDirt,   // shown as "Dust": dirt and mud, clods and dust puffs
+		kRock,   // pebbles and rock dust
+		kSnow,   // snow flakes
 		kKinds
 	};
-	inline constexpr std::array<const char*, kKinds> kKindNames{ "Leaves", "Dust", "Rocks" };
+	inline constexpr std::array<const char*, kKinds> kKindNames{ "Leaves", "Green leaves", "Dust", "Rocks", "Snow" };
+
+	// leaves and green leaves fly, land and get kicked up again the same way (and leave trodden patches)
+	constexpr bool IsLeaves(Kind a_kind) { return a_kind == kLeaves || a_kind == kGreen; }
+	// what flutters down one by one: the leaves and the snow flakes (the rest flies in arcs, or drifts as dust)
+	constexpr bool Flutters(Kind a_kind) { return IsLeaves(a_kind) || a_kind == kSnow; }
 
 	// a landscape texture's own choice in the menu (textures without one use their default, see Terrain)
 	struct TextureChoice
@@ -40,8 +47,10 @@ namespace Settings
 
 	inline const std::array<KindSettings, kKinds> kDefaultKinds{ {
 		{ true, 2.2f, 200, 1.05f, {}, true, {} },  // leaves
+		{ true, 1.8f, 150, 1.0f, {}, true, {} },   // green leaves
 		{ true, 0.8f, 120, 0.95f, {}, true, {} },  // dust: dirt and mud (three quarters clods, a quarter dust puffs)
 		{ true, 1.0f, 120, 1.0f, {}, true, {} },  // rocks (three quarters pebbles, a quarter rock dust)
+		{ true, 1.6f, 250, 1.25f, {}, true, {} },  // snow flakes
 	} };
 
 	struct Values
@@ -57,6 +66,9 @@ namespace Settings
 		float                               swingStrength{ 1.0f };
 		bool                                onHorse{ true };     // your horse's hooves kick things up too
 		bool                                sneakQuieter{ true };  // sneaking kicks up less
+		bool                                sounds{ true };        // a soft rustle of flying leaves, little stones ticking (no sound for dust and snow)
+		float                               leafVolume{ 0.6f };
+		float                               rockVolume{ 0.6f };
 
 		bool  npcs{ true };          // NPCs and creatures near you kick things up too
 		int   npcMax{ 6 };           // the nearest this many
@@ -67,6 +79,8 @@ namespace Settings
 		float shoutStrength{ 1.0f };
 		bool  slams{ true };         // heavy blows that hit the ground (giant clubs, hammers) throw up a ring
 		float slamStrength{ 1.0f };
+		bool  explosions{ true };    // explosions near the ground (fireballs, runes, traps) blow it away in a ring
+		float explosionStrength{ 1.0f };
 		bool  bodies{ true };        // a body dropping to the ground (killed) throws up a ring
 		float bodyStrength{ 1.0f };
 		bool  wind{ true };          // strong wind (the weather's, Dynamic Wind's) lifts leaves and a little dust

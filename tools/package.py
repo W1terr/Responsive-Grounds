@@ -1,6 +1,7 @@
 r"""Builds the mod archive "Responsive Grounds <version>.zip": SKSE\Plugins\ResponsiveGrounds.dll and the assets
-(meshes\ResponsiveGrounds\Leaves.nif + Particles.nif, textures\ResponsiveGrounds\Leaf*.dds + Debris*.dds from
-tools/make_assets.py). The version is the target's set_version in xmake.lua (a trailing ".0" is left out of the name).
+(meshes\ResponsiveGrounds\Leaves.nif + Particles.nif from tools/make_assets.py, textures\ResponsiveGrounds\*.dds
+(BC7, compressed from make_assets.py's output) and Sound\fx\ResponsiveGrounds\*.wav (tools/make_sounds.py). The
+version is the target's set_version in xmake.lua (a trailing ".0" is left out of the name).
 usage: python package.py [build dir] [output dir]"""
 
 import re
@@ -28,10 +29,15 @@ def main():
         "meshes/ResponsiveGrounds/Leaves.nif": res / "meshes" / "ResponsiveGrounds" / "Leaves.nif",
         "textures/ResponsiveGrounds/Leaf.dds": res / "textures" / "ResponsiveGrounds" / "Leaf.dds",
         "textures/ResponsiveGrounds/Leaf_n.dds": res / "textures" / "ResponsiveGrounds" / "Leaf_n.dds",
+        "textures/ResponsiveGrounds/GreenLeaf.dds": res / "textures" / "ResponsiveGrounds" / "GreenLeaf.dds",
         "meshes/ResponsiveGrounds/Particles.nif": res / "meshes" / "ResponsiveGrounds" / "Particles.nif",
         "textures/ResponsiveGrounds/Debris.dds": res / "textures" / "ResponsiveGrounds" / "Debris.dds",
         "textures/ResponsiveGrounds/Debris_n.dds": res / "textures" / "ResponsiveGrounds" / "Debris_n.dds",
+        "textures/ResponsiveGrounds/Snow.dds": res / "textures" / "ResponsiveGrounds" / "Snow.dds",
+        "textures/ResponsiveGrounds/Snow_n.dds": res / "textures" / "ResponsiveGrounds" / "Snow_n.dds",
     }
+    for sound in sorted((res / "Sound" / "fx" / "ResponsiveGrounds").glob("*.wav")):
+        files[f"Sound/fx/ResponsiveGrounds/{sound.name}"] = sound
     for lang in sorted((res / "SKSE" / "Plugins" / "ResponsiveGrounds" / "lang").glob("*.json")):
         files[f"SKSE/Plugins/ResponsiveGrounds/lang/{lang.name}"] = lang
     missing = [str(p) for p in files.values() if not p.exists()]

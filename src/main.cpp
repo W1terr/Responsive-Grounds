@@ -3,6 +3,7 @@
 #include "Particles.h"
 #include "Menu.h"
 #include "Settings.h"
+#include "Sounds.h"
 #include "Terrain.h"
 
 namespace
@@ -14,6 +15,7 @@ namespace
 			Terrain::Init();
 			Terrain::Apply();
 			Particles::Init();
+			Sounds::Init();
 			Lang::Set(Settings::Get().language);
 			Menu::Register();
 			break;

@@ -26,26 +26,31 @@ namespace Menu
 
 		constexpr auto kSection = "Responsive Grounds";
 
-		const std::array<ImVec4, kKinds> kColors{ ImVec4{ 0.95f, 0.65f, 0.25f, 1.0f }, ImVec4{ 0.8f, 0.62f, 0.42f, 1.0f },
-			ImVec4{ 0.7f, 0.72f, 0.74f, 1.0f } };
+		const std::array<ImVec4, kKinds> kColors{ ImVec4{ 0.95f, 0.65f, 0.25f, 1.0f }, ImVec4{ 0.55f, 0.82f, 0.35f, 1.0f },
+			ImVec4{ 0.8f, 0.62f, 0.42f, 1.0f }, ImVec4{ 0.7f, 0.72f, 0.74f, 1.0f }, ImVec4{ 0.78f, 0.88f, 1.0f, 1.0f } };
 		const ImVec4 kDim{ 0.6f, 0.6f, 0.6f, 1.0f };
 		const ImVec4 kWarn{ 1.0f, 0.45f, 0.35f, 1.0f };
 
 		constexpr std::array<const char*, kKinds> kAmountHint{
 			"How many leaves your steps kick up. Walking always kicks up a few, running and sprinting many more.",
+			"How many green leaves your steps kick up (the pine forests by default). Walking always kicks up a few, running and sprinting many more.",
 			"How much dirt and mud your steps kick up: clods that bounce once and dust puffs.",
 			"How much your steps kick up on rocky ground, rocks and cliffs: pebbles that bounce once and rock dust.",
+			"How many snow flakes your steps kick up on snow. They flutter down slower than leaves and melt soon after landing.",
 		};
 		constexpr std::array<const char*, kKinds> kMostHint{
 			"Leaves in the air and lying on the ground together. When all are in use, the ones that landed longest ago are reused. Lower it if you need the performance.",
+			"Green leaves in the air and lying on the ground together. When all are in use, the ones that landed longest ago are reused. Lower it if you need the performance.",
 			"Clods and dust puffs together (a quarter of them puffs). When all are in use, the oldest are reused. Lower it if you need the performance.",
 			"Pebbles and rock dust together (a quarter of them dust). When all are in use, the oldest are reused. Lower it if you need the performance.",
+			"Snow flakes in the air and on the ground together. When all are in use, the oldest are reused. Lower it if you need the performance.",
 		};
-		constexpr std::array<const char*, kKinds> kOnLabel{ "Leaves on", "Dust on", "Rocks on" };
-		constexpr std::array<const char*, kKinds> kAddLabel{ "+ Leaves", "+ Dust", "+ Rocks" };
-		constexpr std::array<const char*, kKinds> kOffText{ "Leaves are switched off on the Settings page.", "Dust is switched off on the Settings page.",
-			"Rocks are switched off on the Settings page." };
-		constexpr std::array<const char*, kKinds> kRemoveTip{ "Remove it from Leaves", "Remove it from Dust", "Remove it from Rocks" };
+		constexpr std::array<const char*, kKinds> kOnLabel{ "Leaves on", "Green leaves on", "Dust on", "Rocks on", "Snow on" };
+		constexpr std::array<const char*, kKinds> kAddLabel{ "+ Leaves", "+ Green leaves", "+ Dust", "+ Rocks", "+ Snow" };
+		constexpr std::array<const char*, kKinds> kOffText{ "Leaves are switched off on the Settings page.", "Green leaves are switched off on the Settings page.",
+			"Dust is switched off on the Settings page.", "Rocks are switched off on the Settings page.", "Snow is switched off on the Settings page." };
+		constexpr std::array<const char*, kKinds> kRemoveTip{ "Remove it from Leaves", "Remove it from Green leaves", "Remove it from Dust", "Remove it from Rocks",
+			"Remove it from Snow" };
 
 		// translated label with a fixed ImGui id (it must not change with the language)
 		std::string Id(const char* a_english, const char* a_suffix = "")
@@ -108,7 +113,13 @@ namespace Menu
 			if (!st.exterior) {
 				TextColored(kDim, "%s", T("no landscape (interior)"));
 			} else if (!st.object.empty()) {
-				Text("%s", F("an object, material {}", T(st.object.c_str())).c_str());
+				if (st.raised) {
+					Text("%s", T("up on an object that isn't ground: nothing"));
+				} else if (!st.objectTexture.empty()) {
+					Text("%s", F("an object painted with {}", st.objectTexture).c_str());
+				} else {
+					Text("%s", F("an object, material {}", T(st.object.c_str())).c_str());
+				}
 				SameLine();
 				TextDisabled("%s", F("(land below: {})", st.texture.empty() ? "-" : st.texture).c_str());
 			} else if (st.texture.empty()) {
@@ -124,8 +135,8 @@ namespace Menu
 			}
 			Text("%s", st.exterior && !st.grounded ? T("  (in the air or in water)") : "");
 			Text("%s", F("Speed: {:.0f} units/s", st.speed).c_str());
-			Text("%s", F("Flying: {} leaves, {} dust, {} rocks", st.flying[0], st.flying[1], st.flying[2]).c_str());
-			Text("%s", F("On the ground: {} leaves, {} dust, {} rocks", st.landed[0], st.landed[1], st.landed[2]).c_str());
+			Text("%s", F("Flying: {} leaves, {} green leaves, {} dust, {} rocks, {} snow", st.flying[0], st.flying[1], st.flying[2], st.flying[3], st.flying[4]).c_str());
+			Text("%s", F("On the ground: {} leaves, {} green leaves, {} dust, {} rocks, {} snow", st.landed[0], st.landed[1], st.landed[2], st.landed[3], st.landed[4]).c_str());
 			Text("%s", F("NPCs and creatures kicking things up: {}", st.npcs).c_str());
 		}
 
@@ -165,7 +176,7 @@ namespace Menu
 
 			for (std::size_t k = 0; k < kKinds; ++k) {
 				KindSettings(k, s.kinds[k]);
-				if (k == Kind::kLeaves) {
+				if (k == Kind::kGreen) {
 					Changed(SliderFloat(Id("Time on the ground").c_str(), &s.groundTime, 0.0f, 15.0f, seconds.c_str()));
 					Hint("How long a landed leaf stays before it fades into the ground. Walking through it again kicks it back up.");
 				}
@@ -190,6 +201,18 @@ namespace Menu
 			}
 			Changed(Checkbox(Id("Your horse kicks things up too").c_str(), &s.onHorse));
 			Changed(Checkbox(Id("Sneaking kicks up less").c_str(), &s.sneakQuieter));
+
+			Heading("Sounds");
+			Changed(Checkbox(Id("Sounds on").c_str(), &s.sounds));
+			Hint("A soft rustle of leaves flying up and sailing past, and little stones ticking as pebbles land. Dust and snow are quiet. Uses the game's sound effects volume.");
+			if (!s.sounds) {
+				BeginDisabled();
+			}
+			Changed(SliderFloat(Id("Leaves volume").c_str(), &s.leafVolume, 0.0f, 1.0f, "%.2f"));
+			Changed(SliderFloat(Id("Pebbles volume").c_str(), &s.rockVolume, 0.0f, 1.0f, "%.2f"));
+			if (!s.sounds) {
+				EndDisabled();
+			}
 
 			Heading("NPCs and creatures");
 			Changed(Checkbox(Id("NPCs and creatures kick things up too").c_str(), &s.npcs));
@@ -228,6 +251,15 @@ namespace Menu
 			if (!s.slams) {
 				EndDisabled();
 			}
+			Changed(Checkbox(Id("Explosions blow it away").c_str(), &s.explosions));
+			Hint("A fireball or any other explosion near the ground (runes, oil, traps) throws up a ring of whatever lies around it and blows away what is in the air.");
+			if (!s.explosions) {
+				BeginDisabled();
+			}
+			Changed(SliderFloat(Id("Explosion strength").c_str(), &s.explosionStrength, 0.2f, 3.0f, "%.2fx"));
+			if (!s.explosions) {
+				EndDisabled();
+			}
 			Changed(Checkbox(Id("Falling bodies").c_str(), &s.bodies));
 			Hint("A body dropping to the ground (someone just killed) throws up a ring of whatever lies there, as big as the body.");
 			if (!s.bodies) {
@@ -257,7 +289,7 @@ namespace Menu
 
 			Heading("Status");
 			StatusLines();
-			if (Button(Id("Test: throw leaves, dust and rocks around me").c_str())) {
+			if (Button(Id("Test: throw some of everything around me").c_str())) {
 				Particles::RequestTest();
 			}
 			Hint("Throws a ring of each around you on any ground once you close the menu, to see how they look.");
@@ -291,6 +323,8 @@ namespace Menu
 			Changed(Checkbox(Id("On objects too").c_str(), &a_kind.objects));
 			Hint(a_which == Kind::kLeaves ?
 					 "Standing on an object instead of the landscape: it kicks up leaves by its surface material (the one footstep sounds use), where the land around it has leaves (Riften's streets, rocks in the autumn forest)." :
+				 a_which == Kind::kGreen ?
+					 "Standing on an object instead of the landscape: it kicks up green leaves by its surface material (the one footstep sounds use), where the land around it has green leaves (rocks and paths in the pine forests)." :
 					 "Standing on an object instead of the landscape: it kicks this up by its surface material (the one footstep sounds use), like rock cliffs or dirt paths.");
 			if (!a_kind.objects) {
 				BeginDisabled();
@@ -548,7 +582,7 @@ namespace Menu
 			Separator();
 
 			const std::string off = T("off");
-			if (BeginTable("roads", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
+			if (BeginTable("roads", static_cast<int>(kKinds) + 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
 				TableSetupColumn(T("Road"), 0, 2.6f);
 				for (std::size_t k = 0; k < kKinds; ++k) {
 					TableSetupColumn(T(Settings::kKindNames[k]), 0, 1.4f);

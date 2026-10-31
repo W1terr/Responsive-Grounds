@@ -12,20 +12,22 @@ namespace Terrain
 		std::vector<Covers>                                materialStrengths;  // per material and kind, 0 when it doesn't count
 
 		using M = RE::MATERIAL_ID;
-		//                 leaves (x land leaf cover)  dust  rocks
+		//                 leaves, green leaves (x their land cover around)  dust  rocks  snow
 		const std::vector<Material> kMaterials{
-			{ "Ash covered", {}, { 0.0f, 0.7f, 0.0f } },  // Solstheim's ash layer
-			{ "Rock", {}, { 0.0f, 0.0f, 0.7f } },         // natural rocks and cliffs without a layer
-			{ "Ice", { M::kIce, M::kIceForm }, { 0.0f, 0.0f, 0.0f } },
-			{ "Dirt", { M::kDirt }, { 0.7f, 0.8f, 0.0f } },
-			{ "Mud", { M::kMud }, { 0.4f, 0.6f, 0.0f } },
-			{ "Gravel", { M::kGravel }, { 0.6f, 0.5f, 0.6f } },
-			{ "Sand", { M::kSand }, { 0.0f, 0.7f, 0.0f } },
-			{ "Ash", { M::kAsh }, { 0.0f, 0.7f, 0.0f } },
-			{ "Grass", { M::kGrass }, { 0.8f, 0.0f, 0.0f } },
+			{ "Snow covered", {}, { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f } },  // a snow layer, or a snowy model
+			{ "Ash covered", {}, { 0.0f, 0.0f, 0.7f, 0.0f, 0.0f } },  // Solstheim's ash layer
+			{ "Rock", {}, { 0.0f, 0.0f, 0.0f, 0.7f, 0.0f } },         // natural rocks and cliffs without a layer
+			{ "Snow", { M::kSnow, M::kSnowStairs }, { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f } },
+			{ "Ice", { M::kIce, M::kIceForm }, { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } },
+			{ "Dirt", { M::kDirt }, { 0.7f, 0.7f, 0.8f, 0.0f, 0.0f } },
+			{ "Mud", { M::kMud }, { 0.4f, 0.4f, 0.6f, 0.0f, 0.0f } },
+			{ "Gravel", { M::kGravel }, { 0.6f, 0.6f, 0.5f, 0.6f, 0.0f } },
+			{ "Sand", { M::kSand }, { 0.0f, 0.0f, 0.7f, 0.0f, 0.0f } },
+			{ "Ash", { M::kAsh }, { 0.0f, 0.0f, 0.7f, 0.0f, 0.0f } },
+			{ "Grass", { M::kGrass }, { 0.8f, 0.8f, 0.0f, 0.0f, 0.0f } },
 			{ "Stone", { M::kStone, M::kStoneHeavy, M::kStoneBroken, M::kStoneStairs, M::kStoneAsStairs, M::kStoneStairsBroken, M::kBoulderSmall, M::kBoulderLarge },
-				{ 0.6f, 0.0f, 0.0f } },
-			{ "Wood", { M::kWood, M::kWoodHeavy, M::kWoodLight, M::kWoodStairs, M::kWoodAsStairs }, { 0.5f, 0.0f, 0.0f } },
+				{ 0.6f, 0.6f, 0.0f, 0.0f, 0.0f } },
+			{ "Wood", { M::kWood, M::kWoodHeavy, M::kWoodLight, M::kWoodStairs, M::kWoodAsStairs }, { 0.5f, 0.5f, 0.0f, 0.0f, 0.0f } },
 		};
 
 		std::string Lower(std::string_view a_text)
@@ -44,22 +46,22 @@ namespace Terrain
 			const char* name;  // the file name, or a part of it
 			bool        part;
 			const char* label;
-			Covers      strength;  // leaves (x the leafy land around), dust, rocks
+			Covers      strength;  // leaves, green leaves (x that kind's land around), dust, rocks, snow
 		};
 		// first match wins (the winter roads before the trails); no leaves by default (they can be turned on per road)
 		const std::array<RoadKind, 12> kRoadKinds{ {
-			{ "_winter", true, "Winter road", { 0.0f, 0.25f, 0.0f } },
-			{ "grounddirt01_trail", true, "Dirt road edge", { 0.0f, 0.7f, 0.2f } },
-			{ "grounddirt01.dds", false, "Dirt road", { 0.0f, 0.8f, 0.25f } },
-			{ "dirtdry.dds", false, "Dry dirt road", { 0.0f, 0.9f, 0.2f } },
-			{ "groundmud01.dds", false, "Mud road", { 0.0f, 0.6f, 0.0f } },
-			{ "ratwaybwall01.dds", false, "Helgen mud", { 0.0f, 0.6f, 0.0f } },
-			{ "groundstone01.dds", false, "Stone road", { 0.0f, 0.2f, 0.25f } },
-			{ "volcanictundra01.dds", false, "Volcanic road", { 0.0f, 0.5f, 0.4f } },
-			{ "wrstonefloor01.dds", false, "Whiterun stone", { 0.0f, 0.15f, 0.0f } },
-			{ "riftenplazabrick02.dds", false, "Riften brick", { 0.0f, 0.1f, 0.0f } },
-			{ "dwestonefloor02.dds", false, "Dwemer stone", { 0.0f, 0.1f, 0.0f } },
-			{ "glaciersnow01.dds", false, "Glacier snow", { 0.0f, 0.0f, 0.0f } },
+			{ "_winter", true, "Winter road", { 0.0f, 0.0f, 0.25f, 0.0f, 0.5f } },
+			{ "grounddirt01_trail", true, "Dirt road edge", { 0.0f, 0.0f, 0.7f, 0.2f, 0.0f } },
+			{ "grounddirt01.dds", false, "Dirt road", { 0.0f, 0.0f, 0.8f, 0.25f, 0.0f } },
+			{ "dirtdry.dds", false, "Dry dirt road", { 0.0f, 0.0f, 0.9f, 0.2f, 0.0f } },
+			{ "groundmud01.dds", false, "Mud road", { 0.0f, 0.0f, 0.6f, 0.0f, 0.0f } },
+			{ "ratwaybwall01.dds", false, "Helgen mud", { 0.0f, 0.0f, 0.6f, 0.0f, 0.0f } },
+			{ "groundstone01.dds", false, "Stone road", { 0.0f, 0.0f, 0.2f, 0.25f, 0.0f } },
+			{ "volcanictundra01.dds", false, "Volcanic road", { 0.0f, 0.0f, 0.5f, 0.4f, 0.0f } },
+			{ "wrstonefloor01.dds", false, "Whiterun stone", { 0.0f, 0.0f, 0.15f, 0.0f, 0.0f } },
+			{ "riftenplazabrick02.dds", false, "Riften brick", { 0.0f, 0.0f, 0.1f, 0.0f, 0.0f } },
+			{ "dwestonefloor02.dds", false, "Dwemer stone", { 0.0f, 0.0f, 0.1f, 0.0f, 0.0f } },
+			{ "glaciersnow01.dds", false, "Glacier snow", { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f } },
 		} };
 
 		const RoadKind* RoadKindOf(std::string_view a_name)
@@ -207,6 +209,17 @@ namespace Terrain
 				return 0.35f;
 			}
 			return 0.6f;
+		case Kind::kGreen:
+			if (!name.contains("pineforest") || name.contains("road")) {
+				return 0.0f;
+			}
+			if (name.contains("pineforest02")) {
+				return 1.0f;  // needles with small green leaves
+			}
+			if (name.contains("pineforest03")) {
+				return 0.5f;  // moss
+			}
+			return 0.6f;  // needles and twigs
 		case Kind::kDirt:
 			if ((!name.contains("dirt") && !name.contains("mud")) || name.contains("snow")) {
 				return 0.0f;
@@ -238,6 +251,23 @@ namespace Terrain
 				return 0.6f;
 			}
 			return 0.75f;
+		case Kind::kSnow:
+			if (!name.contains("snow")) {
+				return 0.0f;
+			}
+			if (name.contains("stone") || name.contains("cobble")) {
+				return 0.3f;  // snowy cobbles
+			}
+			if (name.contains("rock")) {
+				return 0.5f;
+			}
+			if (name.contains("grass")) {
+				return 0.6f;
+			}
+			if (name.contains("path") || name.contains("dirt")) {
+				return 0.7f;
+			}
+			return 1.0f;
 		default:
 			return 0.0f;
 		}
@@ -400,8 +430,8 @@ namespace Terrain
 
 	namespace
 	{
-		// the covers at a point; road leaves are left out of them and summed into a_roadLeaves (when given)
-		Covers CoverRaw(const RE::NiPoint3& a_position, float* a_roadLeaves)
+		// the covers at a point; road leaves (both kinds) are left out of them and summed into a_roadLeaves (when given)
+		Covers CoverRaw(const RE::NiPoint3& a_position, Covers* a_roadLeaves)
 		{
 			Covers total{};
 			Spot   spot;
@@ -416,9 +446,9 @@ namespace Terrain
 					}
 					const bool road = files[f].road;
 					for (std::size_t k = 0; k < kKinds; ++k) {
-						if (road && k == Kind::kLeaves) {
+						if (road && Settings::IsLeaves(static_cast<Kind>(k))) {
 							if (a_roadLeaves) {
-								*a_roadLeaves += a_share * strengths[f][k];
+								(*a_roadLeaves)[k] += a_share * strengths[f][k];
 							}
 						} else {
 							total[k] += a_share * strengths[f][k];
@@ -429,18 +459,32 @@ namespace Terrain
 			return total;
 		}
 
-		// how leafy the land beside a road is (not counting the roads)
-		float LeavesAround(const RE::NiPoint3& a_position)
+		// how leafy (of each leaf kind) the land beside a road is (not counting the roads)
+		Covers LeavesAround(const RE::NiPoint3& a_position)
 		{
-			float leaves = 0.0f;
+			Covers leaves{};
 			for (const auto& [dx, dy] : { std::pair{ 256.0f, 0.0f }, { -256.0f, 0.0f }, { 0.0f, 256.0f }, { 0.0f, -256.0f } }) {
-				leaves = std::max(leaves, CoverRaw({ a_position.x + dx, a_position.y + dy, a_position.z }, nullptr)[Kind::kLeaves]);
+				const auto around = CoverRaw({ a_position.x + dx, a_position.y + dy, a_position.z }, nullptr);
+				for (const auto k : { Kind::kLeaves, Kind::kGreen }) {
+					leaves[k] = std::max(leaves[k], std::min(around[k], 1.0f));
+				}
 			}
-			return std::min(leaves, 1.0f);
+			return leaves;
 		}
 	}
 
 	bool NorthernRoadsFound() { return northernRoads; }
+
+	int FileIndex(std::string_view a_name)
+	{
+		const auto it = std::ranges::lower_bound(files, a_name, {}, [](const File& a_file) -> std::string_view { return a_file.name; });
+		return it != files.end() && it->name == a_name ? static_cast<int>(it - files.begin()) : -1;
+	}
+
+	Covers FileCover(int a_file)
+	{
+		return a_file >= 0 && a_file < static_cast<int>(strengths.size()) ? strengths[a_file] : Covers{};
+	}
 
 	Covers ObjectCover(int a_material, const RE::NiPoint3& a_position)
 	{
@@ -450,22 +494,28 @@ namespace Terrain
 			return result;
 		}
 		result = materialStrengths[m];
-		if (result[Kind::kLeaves] > 0.0f) {
-			float leaves = Cover(a_position)[Kind::kLeaves];
+		if (result[Kind::kLeaves] > 0.0f || result[Kind::kGreen] > 0.0f) {
+			Covers leaves = Cover(a_position);
 			for (const auto& [dx, dy] : { std::pair{ 192.0f, 0.0f }, { -192.0f, 0.0f }, { 0.0f, 192.0f }, { 0.0f, -192.0f } }) {
-				leaves = std::max(leaves, Cover({ a_position.x + dx, a_position.y + dy, a_position.z })[Kind::kLeaves]);
+				const auto around = Cover({ a_position.x + dx, a_position.y + dy, a_position.z });
+				for (const auto k : { Kind::kLeaves, Kind::kGreen }) {
+					leaves[k] = std::max(leaves[k], around[k]);
+				}
 			}
-			result[Kind::kLeaves] *= leaves;
+			result[Kind::kLeaves] *= leaves[Kind::kLeaves];
+			result[Kind::kGreen] *= leaves[Kind::kGreen];
 		}
 		return result;
 	}
 
 	Covers Cover(const RE::NiPoint3& a_position)
 	{
-		float roadLeaves = 0.0f;
+		Covers roadLeaves{};
 		Covers total = CoverRaw(a_position, &roadLeaves);
-		if (roadLeaves > 0.0f) {
-			total[Kind::kLeaves] += roadLeaves * LeavesAround(a_position);
+		if (roadLeaves[Kind::kLeaves] > 0.0f || roadLeaves[Kind::kGreen] > 0.0f) {
+			const auto around = LeavesAround(a_position);
+			total[Kind::kLeaves] += roadLeaves[Kind::kLeaves] * around[Kind::kLeaves];
+			total[Kind::kGreen] += roadLeaves[Kind::kGreen] * around[Kind::kGreen];
 		}
 		for (auto& c : total) {
 			c = std::clamp(c, 0.0f, 1.0f);

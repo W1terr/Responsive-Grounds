@@ -10,7 +10,7 @@ namespace Settings
 
 		constexpr int kVersion = 1;
 
-		constexpr std::array<const char*, kKinds> kKeys{ "leaves", "dust", "rocks" };
+		constexpr std::array<const char*, kKinds> kKeys{ "leaves", "greenLeaves", "dust", "rocks", "snow" };
 
 		Values                     values;
 		Values                     saved;
@@ -111,8 +111,11 @@ namespace Settings
 			a_values.shoutStrength = std::clamp(a_values.shoutStrength, 0.0f, 4.0f);
 			a_values.slamStrength = std::clamp(a_values.slamStrength, 0.0f, 4.0f);
 			a_values.bodyStrength = std::clamp(a_values.bodyStrength, 0.0f, 4.0f);
+			a_values.explosionStrength = std::clamp(a_values.explosionStrength, 0.0f, 4.0f);
 			a_values.windAmount = std::clamp(a_values.windAmount, 0.0f, 5.0f);
 			a_values.swingStrength = std::clamp(a_values.swingStrength, 0.0f, 4.0f);
+			a_values.leafVolume = std::clamp(a_values.leafVolume, 0.0f, 1.0f);
+			a_values.rockVolume = std::clamp(a_values.rockVolume, 0.0f, 1.0f);
 		}
 	}
 
@@ -143,6 +146,9 @@ namespace Settings
 			Read(root, "swingStrength", values.swingStrength);
 			Read(root, "onHorse", values.onHorse);
 			Read(root, "sneakQuieter", values.sneakQuieter);
+			Read(root, "sounds", values.sounds);
+			Read(root, "leafVolume", values.leafVolume);
+			Read(root, "rockVolume", values.rockVolume);
 			Read(root, "npcs", values.npcs);
 			Read(root, "npcMax", values.npcMax);
 			Read(root, "npcRange", values.npcRange);
@@ -152,6 +158,8 @@ namespace Settings
 			Read(root, "shoutStrength", values.shoutStrength);
 			Read(root, "slams", values.slams);
 			Read(root, "slamStrength", values.slamStrength);
+			Read(root, "explosions", values.explosions);
+			Read(root, "explosionStrength", values.explosionStrength);
 			Read(root, "bodies", values.bodies);
 			Read(root, "bodyStrength", values.bodyStrength);
 			Read(root, "wind", values.wind);
@@ -186,6 +194,9 @@ namespace Settings
 			{ "swingStrength", values.swingStrength },
 			{ "onHorse", values.onHorse },
 			{ "sneakQuieter", values.sneakQuieter },
+			{ "sounds", values.sounds },
+			{ "leafVolume", values.leafVolume },
+			{ "rockVolume", values.rockVolume },
 			{ "npcs", values.npcs },
 			{ "npcMax", values.npcMax },
 			{ "npcRange", values.npcRange },
@@ -195,6 +206,8 @@ namespace Settings
 			{ "shoutStrength", values.shoutStrength },
 			{ "slams", values.slams },
 			{ "slamStrength", values.slamStrength },
+			{ "explosions", values.explosions },
+			{ "explosionStrength", values.explosionStrength },
 			{ "bodies", values.bodies },
 			{ "bodyStrength", values.bodyStrength },
 			{ "wind", values.wind },
