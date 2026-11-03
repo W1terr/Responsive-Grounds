@@ -5,7 +5,11 @@ textures\\effects\\fxaspenleafanim.dds, 8 x 8 frames of one tumbling leaf):
   res/textures/ResponsiveGrounds/Leaf_n.dds     its normal map (veins from the leaf's own shading)
   res/textures/ResponsiveGrounds/GreenLeaf.dds  the same leaves green (summer forests), same layout and normal map
   res/meshes/ResponsiveGrounds/Leaves.nif       one small cupped leaf mesh per atlas cell (Leaf0 ... Leaf7), and
-                                                the same over the green atlas (GreenLeaf0 ... GreenLeaf7)
+                                                the same over the green atlas (GreenLeaf0 ... GreenLeaf7, normal map
+                                                GreenLeaf_n.dds)
+
+The shipped Leaf.dds, GreenLeaf.dds and GreenLeaf_n.dds are FOMOD options in res/options (tools/make_variants.py):
+Leaf.dds/GreenLeaf.dds here are the "mixed" and "broad" ones, GreenLeaf_n.dds of "broad" is a copy of Leaf_n.dds.
 
 and the dirt and rock bits from vanilla effect textures (fxsnowsoftsub's soft puff shapes, fxdirtrockanim):
 
@@ -51,6 +55,7 @@ TEMPLATE = r"meshes\architecture\riften\clutter\rtleaves01.nif"  # a lit, alpha 
 DIFFUSE_PATH = r"textures\ResponsiveGrounds\Leaf.dds"
 NORMAL_PATH = r"textures\ResponsiveGrounds\Leaf_n.dds"
 GREEN_PATH = r"textures\ResponsiveGrounds\GreenLeaf.dds"
+GREEN_NORMAL_PATH = r"textures\ResponsiveGrounds\GreenLeaf_n.dds"   # its own: the pine needles option has another shape
 
 FRAMES = [(0, 0), (0, 2)]          # (row, column) of the flip book frames used
 CELL_W, CELL_H = 128, 256          # atlas cell
@@ -504,7 +509,7 @@ def template_shape():
 # material keys -> (diffuse, normal, blended)
 MATERIALS = {
     "leaf": (DIFFUSE_PATH, NORMAL_PATH, False),
-    "greenleaf": (GREEN_PATH, NORMAL_PATH, False),
+    "greenleaf": (GREEN_PATH, GREEN_NORMAL_PATH, False),
     "clump": (r"textures\ResponsiveGrounds\Debris.dds", r"textures\ResponsiveGrounds\Debris_n.dds", False),
     "puff": (r"textures\ResponsiveGrounds\Debris.dds", r"textures\ResponsiveGrounds\Debris_n.dds", True),
     "flake": (r"textures\ResponsiveGrounds\Snow.dds", r"textures\ResponsiveGrounds\Snow_n.dds", True),

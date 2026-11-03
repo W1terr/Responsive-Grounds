@@ -14,6 +14,7 @@ This mod adds particle effects to movements and actions based on the ground bene
 - Shouts push particles away from the player. Explosions such as fireballs blow them away in a ring.
 - Strong winds can lift leaves and carry them through the air. **Dynamic Wind Framework - SKSE Plugin is highly recommended.**
 - Support for Northern Roads.
+- Choose the leaf colors in the installer: orange, yellow, red, or mixed autumn leaves, and broad green leaves or pine needles.
 - Customize particle amounts, sizes, and limits. You can also add or remove landscape textures for each particle type.
 
 ## Credits

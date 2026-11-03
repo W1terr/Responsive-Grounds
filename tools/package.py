@@ -1,17 +1,43 @@
-r"""Builds the mod archive "Responsive Grounds <version>.zip": SKSE\Plugins\ResponsiveGrounds.dll and the assets
-(meshes\ResponsiveGrounds\Leaves.nif + Particles.nif from tools/make_assets.py, textures\ResponsiveGrounds\*.dds
-(BC7, compressed from make_assets.py's output) and Sound\fx\ResponsiveGrounds\*.wav (tools/make_sounds.py). The
-version is the target's set_version in xmake.lua (a trailing ".0" is left out of the name).
+r"""Builds the FOMOD archive "Responsive Grounds <version>.zip". The version is the target's set_version in xmake.lua (a
+trailing ".0" is left out of the name).
+
+  00 Core           SKSE\Plugins\ResponsiveGrounds.dll, the translations, meshes\ResponsiveGrounds\Leaves.nif +
+                    Particles.nif (tools/make_assets.py), textures\ResponsiveGrounds\Leaf_n, Debris, Snow (BC7) and
+                    Sound\fx\ResponsiveGrounds\*.wav (tools/make_sounds.py)
+  10 Riften Leaves  one of res\options\riften: Leaf.dds in orange, yellow, red or the 2.0 mix
+  20 Green Leaves   one of res\options\green: GreenLeaf.dds + GreenLeaf_n.dds, broad (2.0) or pine needles
+
+The installer shows the first row of each option's atlas (fomod\images).
 usage: python package.py [build dir] [output dir]"""
 
+import io
 import re
 import sys
 import zipfile
 from pathlib import Path
+from xml.sax.saxutils import escape
+
+import numpy as np
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build"
 OUTPUT = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "dist"
+OPTIONS = ROOT / "res" / "options"
+
+# (folder in the archive, group name, res\options folder, [(option folder, name, description)]); the first is the default
+GROUPS = [
+    ("10 Riften Leaves", "Riften leaves (autumn forests)", "riften", [
+        ("orange", "Orange", "Orange autumn leaves in four shades."),
+        ("yellow", "Yellow", "Golden yellow autumn leaves in four shades."),
+        ("red", "Red", "Red autumn leaves in four shades."),
+        ("mixed", "Mixed", "Orange, golden, red and brown leaves together (the 2.0 look)."),
+    ]),
+    ("20 Green Leaves", "Green leaves (pine forests and other green land)", "green", [
+        ("broad", "Broad", "Round green leaves (the 2.0 look)."),
+        ("needles", "Pine needles", "Single long pine needles. A better match when the trees around are pines and spruces."),
+    ]),
+]
 
 
 def version(target: str) -> str:
@@ -21,34 +47,111 @@ def version(target: str) -> str:
     return re.sub(r"\.0$", "", full)
 
 
+def preview(texture: Path) -> bytes:
+    """the atlas' first row (4 leaves) over a dark forest floor color, as png"""
+    img = np.asarray(Image.open(texture).convert("RGBA"))
+    row = img[:img.shape[0] // 2]
+    bg = np.zeros_like(row[..., :3]) + np.array([38, 44, 34], dtype=np.uint8)
+    shown = np.where(row[..., 3:4] > 128, row[..., :3], bg)
+    out = io.BytesIO()
+    Image.fromarray(shown).save(out, "PNG")
+    return out.getvalue()
+
+
+def option_xml(folder: str, image: str, name: str, description: str, default: bool) -> str:
+    return f"""
+                        <plugin name="{escape(name)}">
+                            <description>{escape(description)}</description>
+                            <image path="{escape(image)}"/>
+                            <files>
+                                <folder source="{escape(folder)}" destination="" priority="0"/>
+                            </files>
+                            <typeDescriptor>
+                                <type name="{'Recommended' if default else 'Optional'}"/>
+                            </typeDescriptor>
+                        </plugin>"""
+
+
+def module_config() -> str:
+    groups = ""
+    for archive_folder, group, source, options in GROUPS:
+        plugins = "".join(option_xml(f"{archive_folder}\\{name}", f"fomod\\images\\{source}_{opt}.png", name, description, i == 0)
+                          for i, (opt, name, description) in enumerate(options))
+        groups += f"""
+                <group name="{escape(group)}" type="SelectExactlyOne">
+                    <plugins order="Explicit">{plugins}
+                    </plugins>
+                </group>"""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
+    <moduleName>Responsive Grounds</moduleName>
+    <requiredInstallFiles>
+        <folder source="00 Core" destination=""/>
+    </requiredInstallFiles>
+    <installSteps order="Explicit">
+        <installStep name="Leaves">
+            <optionalFileGroups order="Explicit">{groups}
+            </optionalFileGroups>
+        </installStep>
+    </installSteps>
+</config>
+"""
+
+
+def info(ver: str) -> str:
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<fomod>
+    <Name>Responsive Grounds</Name>
+    <Author>W1ter</Author>
+    <Version>{ver}</Version>
+    <Description>Leaves, dust, pebbles and snow flakes kicked up from the ground by your steps, attacks, shouts, explosions and the wind, set up in SKSE Menu Framework.</Description>
+    <Groups>
+        <element>Visuals and Graphics</element>
+    </Groups>
+</fomod>
+"""
+
+
 def main():
+    ver = version("ResponsiveGrounds")
     plugin = BUILD / "windows" / "x64" / "releasedbg"
     res = ROOT / "res"
-    files = {
+    core = {
         "SKSE/Plugins/ResponsiveGrounds.dll": plugin / "ResponsiveGrounds.dll",
         "meshes/ResponsiveGrounds/Leaves.nif": res / "meshes" / "ResponsiveGrounds" / "Leaves.nif",
-        "textures/ResponsiveGrounds/Leaf.dds": res / "textures" / "ResponsiveGrounds" / "Leaf.dds",
-        "textures/ResponsiveGrounds/Leaf_n.dds": res / "textures" / "ResponsiveGrounds" / "Leaf_n.dds",
-        "textures/ResponsiveGrounds/GreenLeaf.dds": res / "textures" / "ResponsiveGrounds" / "GreenLeaf.dds",
         "meshes/ResponsiveGrounds/Particles.nif": res / "meshes" / "ResponsiveGrounds" / "Particles.nif",
-        "textures/ResponsiveGrounds/Debris.dds": res / "textures" / "ResponsiveGrounds" / "Debris.dds",
-        "textures/ResponsiveGrounds/Debris_n.dds": res / "textures" / "ResponsiveGrounds" / "Debris_n.dds",
-        "textures/ResponsiveGrounds/Snow.dds": res / "textures" / "ResponsiveGrounds" / "Snow.dds",
-        "textures/ResponsiveGrounds/Snow_n.dds": res / "textures" / "ResponsiveGrounds" / "Snow_n.dds",
     }
+    for texture in ("Leaf_n", "Debris", "Debris_n", "Snow", "Snow_n"):
+        core[f"textures/ResponsiveGrounds/{texture}.dds"] = res / "textures" / "ResponsiveGrounds" / f"{texture}.dds"
     for sound in sorted((res / "Sound" / "fx" / "ResponsiveGrounds").glob("*.wav")):
-        files[f"Sound/fx/ResponsiveGrounds/{sound.name}"] = sound
+        core[f"Sound/fx/ResponsiveGrounds/{sound.name}"] = sound
     for lang in sorted((res / "SKSE" / "Plugins" / "ResponsiveGrounds" / "lang").glob("*.json")):
-        files[f"SKSE/Plugins/ResponsiveGrounds/lang/{lang.name}"] = lang
+        core[f"SKSE/Plugins/ResponsiveGrounds/lang/{lang.name}"] = lang
+    files = {f"00 Core/{entry}": path for entry, path in core.items()}
+    images = {}
+    for archive_folder, _, source, options in GROUPS:
+        for opt, name, _ in options:
+            folder = OPTIONS / source / opt
+            for path in sorted(folder.rglob("*")):
+                if path.is_file():
+                    files[f"{archive_folder}/{name}/" + path.relative_to(folder).as_posix()] = path
+            atlas = next(folder.rglob("*Leaf.dds"), None)
+            if atlas:
+                images[f"fomod/images/{source}_{opt}.png"] = preview(atlas)
     missing = [str(p) for p in files.values() if not p.exists()]
     if missing:
-        sys.exit("missing: " + ", ".join(missing) + " (assets: run tools/make_assets.py)")
+        sys.exit("missing: " + ", ".join(missing) + " (assets: tools/make_assets.py, tools/make_variants.py)")
+
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    archive = OUTPUT / f"Responsive Grounds {version('ResponsiveGrounds')}.zip"
+    archive = OUTPUT / f"Responsive Grounds {ver}.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
         for entry, path in files.items():
             zf.write(path, entry)
-    print(f"wrote {archive} ({archive.stat().st_size / 1024:.0f} KB, {len(files)} files)")
+        for entry, data in images.items():
+            zf.writestr(entry, data)
+        zf.writestr("fomod/info.xml", info(ver))
+        zf.writestr("fomod/ModuleConfig.xml", module_config())
+    print(f"wrote {archive} ({archive.stat().st_size / 1024:.0f} KB, {len(files) + len(images) + 2} files)")
 
 
 if __name__ == "__main__":

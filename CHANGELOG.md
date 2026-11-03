@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1
+
+New
+- FOMOD installer with a choice of leaves, each with a preview picture:
+  - Riften's autumn leaves: orange, yellow, red, or mixed (the 2.0 look).
+  - Green leaves: broad (the 2.0 look) or pine needles (single long needles, a better match for pine and spruce forests).
+
+Other
+- Green leaves have their own normal map (textures\ResponsiveGrounds\GreenLeaf_n.dds).
+- All leaf textures are BC7.
+
 ## 2.0
 
 New
