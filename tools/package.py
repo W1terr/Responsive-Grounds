@@ -5,9 +5,9 @@ trailing ".0" is left out of the name).
                     Particles.nif (tools/make_assets.py), textures\ResponsiveGrounds\Leaf_n, Debris, Snow (BC7) and
                     Sound\fx\ResponsiveGrounds\*.wav (tools/make_sounds.py)
   10 Riften Leaves  one of res\options\riften: Leaf.dds in orange, yellow, red or the 2.0 mix
-  20 Green Leaves   one of res\options\green: GreenLeaf.dds + GreenLeaf_n.dds, broad (2.0) or pine needles
+  20 Green Leaves   one of res\options\green: GreenLeaf.dds + GreenLeaf_n.dds, broad (2.0), pine needles or both mixed
 
-The installer shows the first row of each option's atlas (fomod\images).
+The installer shows the first row of each option's atlas (fomod\images); for green mixed two leaves of each row.
 usage: python package.py [build dir] [output dir]"""
 
 import io
@@ -31,11 +31,12 @@ GROUPS = [
         ("orange", "Orange", "Orange autumn leaves in four shades."),
         ("yellow", "Yellow", "Golden yellow autumn leaves in four shades."),
         ("red", "Red", "Red autumn leaves in four shades."),
-        ("mixed", "Mixed", "Orange, golden, red and brown leaves together (the 2.0 look)."),
+        ("mixed", "Mixed", "Orange, golden, red and brown leaves together (the 2.0 look). How much of each color can be set in the menu (Leaf mix page)."),
     ]),
     ("20 Green Leaves", "Green leaves (pine forests and other green land)", "green", [
         ("broad", "Broad", "Round green leaves (the 2.0 look)."),
         ("needles", "Pine needles", "Single long pine needles. A better match when the trees around are pines and spruces."),
+        ("mixed", "Mixed", "Broad green leaves and pine needles together, in all four greens. How much of each can be set in the menu (Leaf mix page)."),
     ]),
 ]
 
@@ -47,10 +48,12 @@ def version(target: str) -> str:
     return re.sub(r"\.0$", "", full)
 
 
-def preview(texture: Path) -> bytes:
-    """the atlas' first row (4 leaves) over a dark forest floor color, as png"""
+def preview(texture: Path, both_rows: bool = False) -> bytes:
+    """the atlas' first row (4 leaves) over a dark forest floor color, as png; both_rows: the first two of row 1 and
+    the last two of row 2 (an atlas with a different shape per row)"""
     img = np.asarray(Image.open(texture).convert("RGBA"))
-    row = img[:img.shape[0] // 2]
+    h, w = img.shape[0] // 2, img.shape[1] // 2
+    row = np.concatenate([img[:h, :w], img[h:, w:]], axis=1) if both_rows else img[:h]
     bg = np.zeros_like(row[..., :3]) + np.array([38, 44, 34], dtype=np.uint8)
     shown = np.where(row[..., 3:4] > 128, row[..., :3], bg)
     out = io.BytesIO()
@@ -137,7 +140,7 @@ def main():
                     files[f"{archive_folder}/{name}/" + path.relative_to(folder).as_posix()] = path
             atlas = next(folder.rglob("*Leaf.dds"), None)
             if atlas:
-                images[f"fomod/images/{source}_{opt}.png"] = preview(atlas)
+                images[f"fomod/images/{source}_{opt}.png"] = preview(atlas, (source, opt) == ("green", "mixed"))
     missing = [str(p) for p in files.values() if not p.exists()]
     if missing:
         sys.exit("missing: " + ", ".join(missing) + " (assets: tools/make_assets.py, tools/make_variants.py)")

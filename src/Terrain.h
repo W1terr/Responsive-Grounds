@@ -4,7 +4,8 @@
 
 // Which landscape textures kick up leaves, green leaves, dirt, rocks and snow, and how much of each the ground has at a position. The
 // weights come from the land's own texture layers (the per vertex opacities the landscape shader blends), so they
-// follow the texture actually painted there, whatever the weather, the season mod or the terrain mesh.
+// follow the texture actually painted there, whatever the weather or the terrain mesh; with Seasons of Skyrim the
+// texture it shows there in this season (see Seasons).
 namespace Terrain
 {
 	using Kind = Settings::Kind;
@@ -80,6 +81,10 @@ namespace Terrain
 	void Apply();  // rebuilds the per texture strengths from the settings (main thread)
 
 	const std::vector<File>& Files();  // every landscape texture file, by name
+
+	// Seasons of Skyrim's repaint for the season here (record -> the record whose texture it shows), null: the land
+	// as painted. Everything above then goes by what the land shows (main thread).
+	void SetSeasonSwaps(const std::unordered_map<const RE::TESLandTexture*, const RE::TESLandTexture*>* a_swaps);
 
 	Covers Cover(const RE::NiPoint3& a_position);  // fast, main thread
 	Probe  At(const RE::NiPoint3& a_position);     // with the dominant texture, for the status line

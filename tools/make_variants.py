@@ -6,6 +6,9 @@ r"""Writes the FOMOD's leaf texture options (BC7, compressed with texconv) into 
   green/broad                                the 2.0 green atlas + GreenLeaf_n.dds (a copy of Leaf_n.dds), not written here
   green/needles                              single pine needles (two shapes) in blue green, green, dark green and dry
                                              yellowish + their own normal map
+  green/mixed                                broad leaves and pine needles together: the broad atlas' first row (its
+                                             first leaf shape) over the needles' second row, in all four greens; the
+                                             normal map put together the same way
 
 The aspen leaf comes from the game (tools/gamefiles.py); texconv from SSEEdit/xLODGen (RG_TEXCONV). The riften ones are
 only written when missing or with --riften.
@@ -99,6 +102,19 @@ def needle_atlas():
     return atlas, alpha, normals
 
 
+def half_mips(top, bottom):
+    """one mip chain of two atlas rows made apart (each half keeps its own alpha tested coverage)"""
+    levels = []
+    for a, b in zip(mips(top), mips(bottom)):
+        level = np.concatenate([a, b], axis=0)
+        if levels and level.shape[0] != max(1, levels[-1].shape[0] // 2):
+            break                        # the halves' 1x1 levels stacked (2x1): the 2x2 one averaged instead
+        levels.append(level)
+    if levels[-1].shape[:2] != (1, 1):
+        levels.append(levels[-1].mean(axis=(0, 1), keepdims=True))
+    return levels
+
+
 def bc7(levels, path: Path):
     """the mip chain as BC7 (texconv keeps the given mips: the alpha tested coverage stays as mips() made it)"""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,6 +147,15 @@ def main():
     bc7(mips(rgba), folder / "GreenLeaf.dds")
     bc7(mips_plain(normals), folder / "GreenLeaf_n.dds")
     shown.append(rgba)
+    # mixed: broad leaves (row 0 of the broad atlas, decoded from its BC7) over the needles' second row
+    broad = OPTIONS / "green" / "broad" / "textures" / "ResponsiveGrounds"
+    leaves = np.asarray(Image.open(broad / "GreenLeaf.dds").convert("RGBA")).astype(np.float64) / 255.0
+    leaves_n = np.asarray(Image.open(broad / "GreenLeaf_n.dds").convert("RGBA")).astype(np.float64) / 255.0
+    half = CELL_H
+    folder = OPTIONS / "green" / "mixed" / "textures" / "ResponsiveGrounds"
+    bc7(half_mips(leaves[:half], rgba[half:]), folder / "GreenLeaf.dds")
+    bc7(mips_plain(np.concatenate([leaves_n[:half], normals[half:]], axis=0)), folder / "GreenLeaf_n.dds")
+    shown.append(np.concatenate([leaves[:half], rgba[half:]], axis=0))
     if args:
         bg = np.array([0.16, 0.2, 0.15])
         tiles = [np.where(img[..., 3:4] > 0.5, img[..., :3], bg) for img in shown]

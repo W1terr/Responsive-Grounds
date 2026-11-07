@@ -28,6 +28,20 @@ namespace Settings
 		bool operator==(const TextureChoice&) const = default;
 	};
 
+	// The leaf atlases: four colors (columns) of two shapes (rows). An installer's "Mixed" choice drops a file in
+	// Data\SKSE\Plugins\ResponsiveGrounds\Mix (Leaves.json: {"mix": "colors"}, GreenLeaves.json: {"mix": "shapes"}) and
+	// then that kind's mix can be set in the menu: Riften's orange, yellow, red and brown leaves, or green broad leaves
+	// and pine needles. Without it the colors keep their default shares and the shapes come half and half.
+	enum class Mix
+	{
+		kNone,
+		kColors,  // the four columns
+		kShapes,  // the two rows
+	};
+	Mix MixOf(Kind a_kind);  // what the installed option of a leaf kind lets you mix
+	inline constexpr std::array<float, 4> kDefaultColorMix{ 32.0f, 30.0f, 20.0f, 18.0f };
+	inline constexpr std::array<float, 2> kDefaultShapeMix{ 50.0f, 50.0f };
+
 	struct KindSettings
 	{
 		bool  enabled{ true };
@@ -41,6 +55,10 @@ namespace Settings
 
 		bool                                 objects{ true };  // standing on objects (rocks, cliffs, streets) counts too, by their surface material
 		std::map<std::string, TextureChoice> materials;        // by material name ("Stone"), like the textures
+
+		// leaves only: how much of each color / shape new leaves get (relative weights 0..100, all 0: even)
+		std::array<float, 4> colorMix{ kDefaultColorMix };
+		std::array<float, 2> shapeMix{ kDefaultShapeMix };
 
 		bool operator==(const KindSettings&) const = default;
 	};
@@ -88,6 +106,7 @@ namespace Settings
 		bool  windFlip{ false };     // the other way round (if leaves fly against the trees' sway)
 
 		bool northernRoads{ true };  // Northern Roads' road textures kick things up (each road kind with its own amounts)
+		bool seasons{ true };        // with Seasons of Skyrim: the land counts as the season paints it (snow in winter)
 
 		bool        debugLog{ false };
 		std::string language{ "auto" };  // the menu's language: "auto" = the game's, or english, french...

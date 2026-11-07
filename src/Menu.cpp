@@ -11,6 +11,7 @@
 
 #include "Lang.h"
 #include "Particles.h"
+#include "Seasons.h"
 #include "Settings.h"
 #include "Terrain.h"
 
@@ -51,6 +52,7 @@ namespace Menu
 			"Dust is switched off on the Settings page.", "Rocks are switched off on the Settings page.", "Snow is switched off on the Settings page." };
 		constexpr std::array<const char*, kKinds> kRemoveTip{ "Remove it from Leaves", "Remove it from Green leaves", "Remove it from Dust", "Remove it from Rocks",
 			"Remove it from Snow" };
+		constexpr std::array<const char*, Seasons::kSeasons> kSeasonNames{ "no season", "Winter", "Spring", "Summer", "Autumn" };
 
 		// translated label with a fixed ImGui id (it must not change with the language)
 		std::string Id(const char* a_english, const char* a_suffix = "")
@@ -138,6 +140,15 @@ namespace Menu
 			Text("%s", F("Flying: {} leaves, {} green leaves, {} dust, {} rocks, {} snow", st.flying[0], st.flying[1], st.flying[2], st.flying[3], st.flying[4]).c_str());
 			Text("%s", F("On the ground: {} leaves, {} green leaves, {} dust, {} rocks, {} snow", st.landed[0], st.landed[1], st.landed[2], st.landed[3], st.landed[4]).c_str());
 			Text("%s", F("NPCs and creatures kicking things up: {}", st.npcs).c_str());
+			if (Seasons::Found()) {
+				Text("%s", F("Season (Seasons of Skyrim): {}", T(kSeasonNames[Seasons::Current()])).c_str());
+				SameLine();
+				if (Seasons::Applied()) {
+					TextDisabled("%s", F("({} landscape textures repainted here)", Seasons::Swapped()).c_str());
+				} else {
+					TextDisabled("%s", T("(the land as painted here)"));
+				}
+			}
 		}
 
 		void KindSettings(std::size_t a_kind, Settings::KindSettings& a_settings)
@@ -281,6 +292,14 @@ namespace Menu
 			Hint("If the leaves fly against the way the trees and grass bend.");
 			if (!s.wind) {
 				EndDisabled();
+			}
+
+			Heading("Seasons of Skyrim");
+			if (Seasons::Found()) {
+				Changed(Checkbox(Id("Seasons of Skyrim support").c_str(), &s.seasons));
+				Hint("The land counts as the season paints it: in winter the snowy land kicks up snow instead of leaves and dust, and a mod's autumn or spring textures what they give. Off: the textures the land is painted with all year.");
+			} else {
+				TextColored(kDim, "%s", T("Seasons of Skyrim isn't installed: the land counts as it is painted."));
 			}
 
 			if (!s.enabled) {
@@ -634,6 +653,59 @@ namespace Menu
 			}
 		}
 
+		// ---- the leaf mix (an installer "Mixed" choice)
+
+		bool AnyMix() { return Settings::MixOf(Kind::kLeaves) != Settings::Mix::kNone || Settings::MixOf(Kind::kGreen) != Settings::Mix::kNone; }
+
+		// one kind's mix: a slider per color or shape with the share of the leaves it gets
+		template <std::size_t N>
+		void MixSliders(Kind a_kind, const char* a_heading, std::array<float, N>& a_weights, const std::array<float, N>& a_defaults,
+			const std::array<const char*, N>& a_names, const std::array<ImVec4, N>& a_colors)
+		{
+			PushID(a_heading);
+			PushStyleColor(ImGuiCol_Text, kColors[a_kind]);
+			Heading(a_heading);
+			PopStyleColor();
+			float total = 0.0f;
+			for (const auto w : a_weights) {
+				total += w;
+			}
+			for (std::size_t i = 0; i < N; ++i) {
+				PushID(static_cast<int>(i));
+				SetNextItemWidth(GetContentRegionAvail().x * 0.45f);
+				PushStyleColor(ImGuiCol_Text, a_colors[i]);
+				Changed(SliderFloat(Id(a_names[i]).c_str(), &a_weights[i], 0.0f, 100.0f, "%.0f"));
+				PopStyleColor();
+				SameLine();
+				const float share = total > 0.0f ? a_weights[i] / total * 100.0f : 100.0f / N;
+				TextDisabled("%s", F("{:.0f}% of them", share).c_str());
+				PopID();
+			}
+			if (Button(Id("Defaults").c_str())) {
+				a_weights = a_defaults;
+				Settings::Touch();
+			}
+			PopID();
+		}
+
+		void __stdcall RenderMix()
+		{
+			std::scoped_lock guard(Settings::Lock());
+			auto&            s = Settings::Get();
+			TextWrapped("%s", T("You chose a mixed set of leaves in the installer: set how much of each the ground kicks up. Leaves that are already out change as they get kicked up again. All at 0: an even mix."));
+			if (Settings::MixOf(Kind::kLeaves) == Settings::Mix::kColors) {
+				static constexpr std::array<const char*, 4> kNames{ "Orange", "Yellow", "Red", "Brown" };
+				static const std::array<ImVec4, 4>          kTint{ ImVec4{ 0.95f, 0.6f, 0.2f, 1.0f }, ImVec4{ 0.98f, 0.85f, 0.3f, 1.0f },
+					ImVec4{ 0.9f, 0.35f, 0.25f, 1.0f }, ImVec4{ 0.7f, 0.55f, 0.4f, 1.0f } };
+				MixSliders(Kind::kLeaves, "Riften leaves (Mixed)", s.kinds[Kind::kLeaves].colorMix, Settings::kDefaultColorMix, kNames, kTint);
+			}
+			if (Settings::MixOf(Kind::kGreen) == Settings::Mix::kShapes) {
+				static constexpr std::array<const char*, 2> kNames{ "Broad leaves", "Pine needles" };
+				static const std::array<ImVec4, 2>          kTint{ ImVec4{ 0.55f, 0.82f, 0.35f, 1.0f }, ImVec4{ 0.45f, 0.7f, 0.55f, 1.0f } };
+				MixSliders(Kind::kGreen, "Green leaves (Mixed)", s.kinds[Kind::kGreen].shapeMix, Settings::kDefaultShapeMix, kNames, kTint);
+			}
+		}
+
 		// ---- the language
 
 		void __stdcall RenderLanguages();
@@ -644,11 +716,13 @@ namespace Menu
 			const char*                              english;
 			SKSEMenuFramework::Model::RenderFunction render;
 			std::string                              shown;
+			bool (*wanted)(){ nullptr };  // only added when this says so
 		};
 		std::array pages{
 			Page{ "Settings", RenderSettings, {} },
 			Page{ "Textures", RenderTextures, {} },
 			Page{ "Northern Roads", RenderRoads, {} },
+			Page{ "Leaf mix", RenderMix, {}, AnyMix },
 			Page{ "Language", RenderLanguages, {} },
 		};
 
@@ -668,7 +742,7 @@ namespace Menu
 			}
 			for (auto& page : pages) {
 				const std::string wanted = T(page.english);
-				if (wanted != page.shown && RenameSection()(std::format("{}/{}", kSection, page.shown).c_str(), wanted.c_str())) {
+				if (!page.shown.empty() && wanted != page.shown && RenameSection()(std::format("{}/{}", kSection, page.shown).c_str(), wanted.c_str())) {
 					page.shown = wanted;
 				}
 			}
@@ -726,6 +800,9 @@ namespace Menu
 		}
 		SKSEMenuFramework::SetSection(kSection);
 		for (auto& page : pages) {
+			if (page.wanted && !page.wanted()) {
+				continue;
+			}
 			page.shown = T(page.english);
 			SKSEMenuFramework::AddSectionItem(page.shown, page.render);
 		}

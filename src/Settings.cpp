@@ -75,11 +75,13 @@ namespace Settings
 			ReadChoices(a_obj, "textures", a_kind.textures, true);
 			Read(a_obj, "objects", a_kind.objects);
 			ReadChoices(a_obj, "materials", a_kind.materials, false);
+			Read(a_obj, "colorMix", a_kind.colorMix);
+			Read(a_obj, "shapeMix", a_kind.shapeMix);
 		}
 
-		json WriteKind(const KindSettings& a_kind)
+		json WriteKind(const KindSettings& a_kind, bool a_leaves)
 		{
-			return {
+			json out{
 				{ "enabled", a_kind.enabled },
 				{ "amount", a_kind.amount },
 				{ "maxParticles", a_kind.maxParticles },
@@ -88,6 +90,31 @@ namespace Settings
 				{ "objects", a_kind.objects },
 				{ "materials", WriteChoices(a_kind.materials) },
 			};
+			if (a_leaves) {
+				out["colorMix"] = a_kind.colorMix;
+				out["shapeMix"] = a_kind.shapeMix;
+			}
+			return out;
+		}
+
+		// the installed option's mix file (see MixOf)
+		Mix ReadMix(const char* a_file)
+		{
+			const std::filesystem::path path = std::filesystem::path("Data/SKSE/Plugins/ResponsiveGrounds/Mix") / a_file;
+			std::ifstream               file(path);
+			if (!file) {
+				return Mix::kNone;
+			}
+			try {
+				const auto  root = json::parse(file);
+				std::string mix;
+				Read(root, "mix", mix);
+				mix = Lower(mix);
+				return mix == "colors" ? Mix::kColors : mix == "shapes" ? Mix::kShapes : Mix::kNone;
+			} catch (const std::exception& e) {
+				logs::warn("{} ignored ({})", path.string(), e.what());
+				return Mix::kNone;
+			}
 		}
 
 		void Clamp(Values& a_values)
@@ -96,6 +123,12 @@ namespace Settings
 				kind.amount = std::clamp(kind.amount, 0.0f, 5.0f);
 				kind.maxParticles = std::clamp(kind.maxParticles, 10, 500);
 				kind.size = std::clamp(kind.size, 0.25f, 4.0f);
+				for (auto& w : kind.colorMix) {
+					w = std::clamp(w, 0.0f, 100.0f);
+				}
+				for (auto& w : kind.shapeMix) {
+					w = std::clamp(w, 0.0f, 100.0f);
+				}
 				for (auto* list : { &kind.textures, &kind.materials }) {
 					for (auto& [name, choice] : *list) {
 						choice.strength = std::clamp(choice.strength, 0.0f, 1.0f);
@@ -166,6 +199,7 @@ namespace Settings
 			Read(root, "windAmount", values.windAmount);
 			Read(root, "windFlip", values.windFlip);
 			Read(root, "northernRoads", values.northernRoads);
+			Read(root, "seasons", values.seasons);
 			Read(root, "debugLog", values.debugLog);
 			Read(root, "language", values.language);
 			Clamp(values);
@@ -214,11 +248,12 @@ namespace Settings
 			{ "windAmount", values.windAmount },
 			{ "windFlip", values.windFlip },
 			{ "northernRoads", values.northernRoads },
+			{ "seasons", values.seasons },
 			{ "debugLog", values.debugLog },
 			{ "language", values.language },
 		};
 		for (std::size_t k = 0; k < kKinds; ++k) {
-			root[kKeys[k]] = WriteKind(values.kinds[k]);
+			root[kKeys[k]] = WriteKind(values.kinds[k], IsLeaves(static_cast<Kind>(k)));
 		}
 		const auto      path = Path();
 		std::error_code error;
@@ -237,6 +272,17 @@ namespace Settings
 	{
 		values = {};
 		Touch();
+	}
+
+	Mix MixOf(Kind a_kind)
+	{
+		static const std::array<Mix, 2> mixes = [] {
+			const std::array<Mix, 2> found{ ReadMix("Leaves.json"), ReadMix("GreenLeaves.json") };
+			constexpr std::array<const char*, 3> kNames{ "none", "colors", "shapes" };
+			logs::info("leaf mix from the installer: Riften leaves {}, green leaves {}", kNames[static_cast<int>(found[0])], kNames[static_cast<int>(found[1])]);
+			return found;
+		}();
+		return a_kind == kLeaves ? mixes[0] : a_kind == kGreen ? mixes[1] : Mix::kNone;
 	}
 
 	Values&     Get() { return values; }

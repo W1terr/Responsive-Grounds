@@ -6,7 +6,8 @@ namespace Hooks
 {
 	namespace
 	{
-		// once per frame on the main thread, while the game runs (not in paused menus)
+		// once per frame on the main thread, while the game runs (not in paused menus); Actor::Update, VR has two more
+		// virtual functions before it
 		struct PlayerUpdate
 		{
 			static void thunk(RE::PlayerCharacter* a_this, float a_delta)
@@ -17,7 +18,8 @@ namespace Hooks
 			static inline REL::Relocation<decltype(thunk)> func;
 		};
 
-		// an explosion being set up (fireballs, fire and frost runes, oil, traps): once, where it goes off
+		// an explosion being set up (fireballs, fire and frost runes, oil, traps): once, where it goes off; VR has one
+		// more virtual function before it
 		struct ExplosionInitialize
 		{
 			static void thunk(RE::Explosion* a_this)
@@ -40,9 +42,9 @@ namespace Hooks
 	void Install()
 	{
 		REL::Relocation<std::uintptr_t> player{ RE::VTABLE_PlayerCharacter[0] };
-		PlayerUpdate::func = player.write_vfunc(0xAD, PlayerUpdate::thunk);
+		PlayerUpdate::func = player.write_vfunc(REL::Module::IsVR() ? 0xAF : 0xAD, PlayerUpdate::thunk);
 		REL::Relocation<std::uintptr_t> explosion{ RE::VTABLE_Explosion[0] };
-		ExplosionInitialize::func = explosion.write_vfunc(0xA2, ExplosionInitialize::thunk);
-		logs::info("hooked the player update and explosions");
+		ExplosionInitialize::func = explosion.write_vfunc(REL::Module::IsVR() ? 0xA3 : 0xA2, ExplosionInitialize::thunk);
+		logs::info("hooked the player update and explosions ({})", REL::Module::IsVR() ? "Skyrim VR" : REL::Module::IsSE() ? "Skyrim SE" : "Skyrim AE");
 	}
 }

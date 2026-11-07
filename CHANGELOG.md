@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.0
+
+New
+- Seasons of Skyrim support: the land counts as the season paints it. In winter the snowy land kicks up snow where autumn leaves, pine needles, dust and pebbles fly the rest of the year; other seasons follow the swaps that mods add for them. The season comes from Seasons of Skyrim itself (also when a mod sets it), only in the worldspaces it repaints. Can be switched off (Settings page).
+- Green leaves: a third installer choice, Mixed (broad green leaves and pine needles together, about half of each).
+- Leaf mix page (only with a Mixed choice in the installer): set how much of each the ground kicks up, Riften's orange, yellow, red and brown leaves, or green broad leaves and pine needles. Leaves already out change as they are kicked up again.
+
+Skyrim SE and VR
+- Skyrim VR: the player update and explosion hooks use VR's own virtual function slots (they hooked the wrong functions there before).
+- Skyrim VR: weapon swings stir things up by your real arm movements while your hands are out (VR has no attack animations to watch).
+- Checked for Skyrim SE 1.5.97 and VR 1.4.15: every game function the mod calls has its address in their address libraries.
+
+Other
+- Menu: a "Seasons of Skyrim" section and the season in the status (all 9 languages).
+
 ## 2.1
 
 New

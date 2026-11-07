@@ -18,7 +18,7 @@ LIT = r'"((?:[^"\\]|\\.)*)"'
 
 # literals in Menu.cpp that are not shown text
 NOT_TEXT = {"Responsive Grounds", "materials", "textures", "roads", "add", "list", "x", "-", "", "auto", "npcs", "(?)",
-            "SKSEMenuFramework.h", "Menu.h", "Lang.h", "Particles.h", "Settings.h", "Terrain.h", "RenameSection"}
+            "SKSEMenuFramework.h", "Menu.h", "Lang.h", "Particles.h", "Seasons.h", "Settings.h", "Terrain.h", "RenameSection"}
 
 
 def literals(text):

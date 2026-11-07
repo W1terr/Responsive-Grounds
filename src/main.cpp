@@ -1,7 +1,8 @@
 #include "Hooks.h"
 #include "Lang.h"
-#include "Particles.h"
 #include "Menu.h"
+#include "Particles.h"
+#include "Seasons.h"
 #include "Settings.h"
 #include "Sounds.h"
 #include "Terrain.h"
@@ -14,14 +15,21 @@ namespace
 		case SKSE::MessagingInterface::kDataLoaded:
 			Terrain::Init();
 			Terrain::Apply();
+			Seasons::Init();
 			Particles::Init();
 			Sounds::Init();
 			Lang::Set(Settings::Get().language);
 			Menu::Register();
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame:
+			Particles::Reset();
+			break;
 		case SKSE::MessagingInterface::kNewGame:
 			Particles::Reset();
+			Seasons::Ask();
+			break;
+		case SKSE::MessagingInterface::kPostLoadGame:
+			Seasons::Ask();
 			break;
 		default:
 			break;

@@ -8,6 +8,7 @@ namespace Terrain
 
 		std::vector<File>                                  files;
 		std::unordered_map<const RE::TESLandTexture*, int> fileOf;     // record -> index into files
+		std::unordered_map<const RE::TESLandTexture*, int> fileShown;  // ... of the texture it shows now (the season's repaint)
 		std::vector<Covers>                                strengths;  // per file and kind, 0 when it doesn't count
 		std::vector<Covers>                                materialStrengths;  // per material and kind, 0 when it doesn't count
 
@@ -106,8 +107,8 @@ namespace Terrain
 			if (!a_texture) {
 				return -1;
 			}
-			const auto it = fileOf.find(a_texture);
-			return it != fileOf.end() ? it->second : -1;
+			const auto it = fileShown.find(a_texture);
+			return it != fileShown.end() ? it->second : -1;
 		}
 
 		// the land data and vertex grid position around a point: 4096 units per cell, 4 quadrants of 17 x 17
@@ -292,6 +293,7 @@ namespace Terrain
 	{
 		files.clear();
 		fileOf.clear();
+		fileShown.clear();
 		const auto dataHandler = RE::TESDataHandler::GetSingleton();
 		if (!dataHandler) {
 			return;
@@ -342,6 +344,7 @@ namespace Terrain
 			++files[i].records;
 			fileOf.emplace(texture, i);
 		}
+		fileShown = fileOf;
 		strengths.assign(files.size(), Covers{});
 
 		logs::info("landscape textures: {} records, {} files", records.size(), files.size());
@@ -396,6 +399,21 @@ namespace Terrain
 	}
 
 	const std::vector<File>& Files() { return files; }
+
+	void SetSeasonSwaps(const std::unordered_map<const RE::TESLandTexture*, const RE::TESLandTexture*>* a_swaps)
+	{
+		fileShown = fileOf;
+		if (!a_swaps) {
+			return;
+		}
+		for (const auto& [from, to] : *a_swaps) {
+			if (const auto it = fileOf.find(to); it != fileOf.end()) {
+				fileShown[from] = it->second;
+			} else {
+				fileShown.erase(from);  // repainted with a record that has no texture: nothing
+			}
+		}
+	}
 
 	const std::vector<Material>& Materials() { return kMaterials; }
 

@@ -1,5 +1,6 @@
 #include "Particles.h"
 
+#include "Seasons.h"
 #include "Settings.h"
 #include "Sounds.h"
 #include "Terrain.h"
@@ -236,6 +237,7 @@ namespace Particles
 			bool                           bounced{ false };
 			bool                           water{ false };  // its ground is a water surface: it floats there
 			float                          rayAt{ 0.0f };   // when its next ground ray is due at the latest
+			std::uint32_t                  mix{ 0 };        // the pool's mix its shape was picked with
 		};
 
 		struct Pool
@@ -249,6 +251,11 @@ namespace Particles
 			std::size_t                                active{ 0 };  // particles in use
 			std::size_t                                used{ 0 };    // slots below this may be in use (free slots are taken lowest first)
 			bool                                       reported{ false };
+			// leaves: how often each color (column) and shape (row) is picked; mix counts their changes, and a leaf
+			// picked with an older mix gets a new shape when it is reused
+			std::array<float, 4>                       colors{ Settings::kDefaultColorMix };
+			std::array<float, 2>                       shapes{ 1.0f, 1.0f };
+			std::uint32_t                              mix{ 0 };
 		};
 
 		enum PoolIndex : std::size_t
@@ -417,6 +424,7 @@ namespace Particles
 		float            statusTimer{ 0.0f };
 		float            logTimer{ 0.0f };
 		bool             wasExterior{ false };
+		const RE::TESWorldSpace* lastWorld{ nullptr };  // the worldspace you were in (outside) last frame
 		bool             lastOnLand{ false };
 		Vec              wind;
 		Vec              cameraPos;
@@ -492,22 +500,36 @@ namespace Particles
 			return total;
 		}
 
+		// one of the weights, by its share (all 0: any)
+		template <std::size_t N>
+		std::size_t PickWeighted(const std::array<float, N>& a_weights)
+		{
+			float total = 0.0f;
+			for (const auto w : a_weights) {
+				total += std::max(w, 0.0f);
+			}
+			if (total <= 0.0f) {
+				return std::uniform_int_distribution<std::size_t>(0, N - 1)(rng);
+			}
+			float r = Random(0.0f, total);
+			for (std::size_t i = 0; i + 1 < N; ++i) {
+				r -= std::max(a_weights[i], 0.0f);
+				if (r <= 0.0f) {
+					return i;
+				}
+			}
+			return N - 1;
+		}
+
 		// which shape a new leaf gets: columns natural, golden, red, brown (green, yellow green, dark green, olive); rows
-		// two leaf shapes
+		// two leaf shapes (green mixed: broad leaves, pine needles)
 		std::size_t PickTemplate(const Pool& a_pool)
 		{
 			const auto count = a_pool.templates.size();
 			if (a_pool.style != Style::kLeaf || count != 8) {
 				return std::uniform_int_distribution<std::size_t>(0, count - 1)(rng);
 			}
-			static constexpr std::array<float, 4> kWeights{ 0.32f, 0.30f, 0.20f, 0.18f };
-			float       r = Random(0.0f, 1.0f);
-			std::size_t column = 0;
-			while (column < 3 && r > kWeights[column]) {
-				r -= kWeights[column];
-				++column;
-			}
-			return column + (Random(0.0f, 1.0f) < 0.5f ? 0 : 4);
+			return PickWeighted(a_pool.colors) + PickWeighted(a_pool.shapes) * 4;
 		}
 
 		RE::BSLightingShaderProperty* LightingOf(RE::NiAVObject* a_object)
@@ -532,6 +554,7 @@ namespace Particles
 				return false;
 			}
 			a_p.node.reset(object);  // joins the scene when shown
+			a_p.mix = a_pool.mix;
 			if (a_pool.style == Style::kPuff) {
 				// a material of its own, so each puff fades by itself
 				const auto mine = LightingOf(object);
@@ -562,6 +585,9 @@ namespace Particles
 			for (std::size_t i = 0; i < count; ++i) {
 				auto& p = a_pool.items[i];
 				if (p.phase == Phase::kFree) {
+					if (p.node && p.mix != a_pool.mix) {
+						p.node.reset();  // the mix changed: a new shape
+					}
 					return MakeNode(a_pool, p) ? &p : nullptr;
 				}
 				float age = -1.0f;
@@ -575,7 +601,15 @@ namespace Particles
 					oldest = &p;
 				}
 			}
-			return oldestAge >= 0.0f ? oldest : nullptr;
+			if (oldestAge < 0.0f) {
+				return nullptr;
+			}
+			if (oldest->mix != a_pool.mix) {
+				Hide(a_pool, *oldest);  // the mix changed: taken down and made again with a new shape
+				oldest->node.reset();
+				return MakeNode(a_pool, *oldest) ? oldest : nullptr;
+			}
+			return oldest;
 		}
 
 		// the water surface over a point, if there is water above a_above (rivers, lakes, the sea)
@@ -1231,6 +1265,18 @@ namespace Particles
 			tuning.wind = s.wind;
 			tuning.windAmount = s.windAmount;
 			tuning.windFlip = s.windFlip;
+			tuning.seasons = s.seasons;
+			// the leaf mix (only what the installed option lets you set; else the defaults)
+			for (const auto [pool, kind] : { std::pair{ kLeafPool, Kind::kLeaves }, std::pair{ kGreenPool, Kind::kGreen } }) {
+				const auto mix = Settings::MixOf(kind);
+				const auto colors = mix == Settings::Mix::kColors ? s.kinds[kind].colorMix : Settings::kDefaultColorMix;
+				const auto shapes = mix == Settings::Mix::kShapes ? s.kinds[kind].shapeMix : std::array<float, 2>{ 1.0f, 1.0f };
+				if (colors != pools[pool].colors || shapes != pools[pool].shapes) {
+					pools[pool].colors = colors;
+					pools[pool].shapes = shapes;
+					++pools[pool].mix;
+				}
+			}
 			tuning.debugLog = s.debugLog;
 			Sounds::Configure(s.enabled && s.sounds, s.leafVolume, s.rockVolume);
 
@@ -1246,6 +1292,16 @@ namespace Particles
 			}
 		}
 
+		// your shown skeleton is the first person one (in VR always: its hands are your hands)
+		bool InFirstPerson()
+		{
+			if (REL::Module::IsVR()) {
+				return true;
+			}
+			const auto camera = RE::PlayerCamera::GetSingleton();
+			return camera && camera->IsInFirstPerson();
+		}
+
 		// The particles hang from the node your character's 3D hangs from (the cell's), which the game always draws
 		// and lights and which doesn't move with you: hanging under the skeleton itself, the skeleton's own update
 		// came after ours and everything slid and turned with you for a frame. The container undoes the node's
@@ -1255,8 +1311,7 @@ namespace Particles
 			const auto root = a_player->Get3D(false);
 			auto       parent = root ? root->parent : nullptr;
 			if (!parent) {
-				const auto camera = RE::PlayerCamera::GetSingleton();
-				const auto shown = a_player->Get3D(camera && camera->IsInFirstPerson());
+				const auto shown = a_player->Get3D(InFirstPerson());
 				parent = shown ? shown->AsNode() : nullptr;  // no parent (yet): the skeleton as before
 			}
 			if (!parent || !container) {
@@ -1573,8 +1628,7 @@ namespace Particles
 		void Swing(Mover& a_m, RE::Actor* a_actor, float a_dt)
 		{
 			const bool allowed = tuning.swing && (a_m.player || tuning.npcAttacks);
-			const auto camera = a_m.player ? RE::PlayerCamera::GetSingleton() : nullptr;
-			const auto root = a_actor->Get3D(camera && camera->IsInFirstPerson());
+			const auto root = a_actor->Get3D(a_m.player && InFirstPerson());
 			if (!root || clock > a_m.swingUntil || !allowed) {
 				for (auto& b : a_m.blades) {
 					b.valid = false;
@@ -2509,7 +2563,14 @@ namespace Particles
 			}
 			return;
 		}
+		// Seasons of Skyrim sets the season as you come outside (and after loads, fast travel): ask it then
+		const auto world = player->GetWorldspace();
+		if (!wasExterior || world != lastWorld) {
+			Seasons::Ask();
+		}
 		wasExterior = true;
+		lastWorld = world;
+		Seasons::Update(world, tuning.seasons);
 
 		// you, or the horse you ride; the NPCs near you
 		auto&                    you = *movers.front();
@@ -2524,6 +2585,7 @@ namespace Particles
 		Track(you, body, dt);
 		if (hadLast && (you.pos - before).Length() > 400.0f) {
 			Reset();  // fast travel, a door, a teleport
+			Seasons::Ask();
 			return;
 		}
 		SelectNpcs(player, mounted ? mount.get() : nullptr, dt);
@@ -2546,6 +2608,13 @@ namespace Particles
 		}
 		for (const auto id : deaths) {
 			WatchDeath(id);
+		}
+		// VR: no attack animations for you, your swings are your arms' own motion; watched while your hands are out
+		if (REL::Module::IsVR() && player->AsActorState()->IsWeaponDrawn()) {
+			if (clock > you.swingUntil) {
+				you.blades = {};
+			}
+			you.swingUntil = clock + kSwingWindow;
 		}
 		for (const auto id : swings) {
 			if (const auto m = FindMover(id)) {

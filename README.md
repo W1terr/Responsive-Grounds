@@ -14,8 +14,10 @@ This mod adds particle effects to movements and actions based on the ground bene
 - Shouts push particles away from the player. Explosions such as fireballs blow them away in a ring.
 - Strong winds can lift leaves and carry them through the air. **Dynamic Wind Framework - SKSE Plugin is highly recommended.**
 - Support for Northern Roads.
-- Choose the leaf colors in the installer: orange, yellow, red, or mixed autumn leaves, and broad green leaves or pine needles.
+- Support for Seasons of Skyrim: the particles follow the season's landscape, so snowy winter ground kicks up snow instead of leaves.
+- Choose the leaf colors in the installer: orange, yellow, red, or mixed autumn leaves, and broad green leaves, pine needles, or both mixed. With a mixed choice, a menu page sets how much of each color or shape you get.
 - Customize particle amounts, sizes, and limits. You can also add or remove landscape textures for each particle type.
+- Works on Skyrim SE (1.5.97), AE, and VR. VR needs the VR Address Library for SKSEVR; in VR, weapon swings follow your real arm movements.
 
 ## Credits
 
