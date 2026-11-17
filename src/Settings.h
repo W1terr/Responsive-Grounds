@@ -10,14 +10,17 @@ namespace Settings
 		kDirt,   // shown as "Dust": dirt and mud, clods and dust puffs
 		kRock,   // pebbles and rock dust
 		kSnow,   // snow flakes
+		kAsh,    // Solstheim's ash: flakes like the snow's, ash grey
 		kKinds
 	};
-	inline constexpr std::array<const char*, kKinds> kKindNames{ "Leaves", "Green leaves", "Dust", "Rocks", "Snow" };
+	inline constexpr std::array<const char*, kKinds> kKindNames{ "Leaves", "Green leaves", "Dust", "Rocks", "Snow", "Ash" };
 
 	// leaves and green leaves fly, land and get kicked up again the same way (and leave trodden patches)
 	constexpr bool IsLeaves(Kind a_kind) { return a_kind == kLeaves || a_kind == kGreen; }
-	// what flutters down one by one: the leaves and the snow flakes (the rest flies in arcs, or drifts as dust)
-	constexpr bool Flutters(Kind a_kind) { return IsLeaves(a_kind) || a_kind == kSnow; }
+	// snow and ash flakes: small, two or three a kick, slow to fall, gone soon after landing
+	constexpr bool IsFlakes(Kind a_kind) { return a_kind == kSnow || a_kind == kAsh; }
+	// what flutters down one by one: the leaves and the flakes (the rest flies in arcs, or drifts as dust)
+	constexpr bool Flutters(Kind a_kind) { return IsLeaves(a_kind) || IsFlakes(a_kind); }
 
 	// a landscape texture's own choice in the menu (textures without one use their default, see Terrain)
 	struct TextureChoice
@@ -69,6 +72,7 @@ namespace Settings
 		{ true, 0.8f, 120, 0.95f, {}, true, {} },  // dust: dirt and mud (three quarters clods, a quarter dust puffs)
 		{ true, 1.0f, 120, 1.0f, {}, true, {} },  // rocks (three quarters pebbles, a quarter rock dust)
 		{ true, 1.6f, 250, 1.25f, {}, true, {} },  // snow flakes
+		{ true, 1.6f, 250, 1.25f, {}, true, {} },  // ash flakes
 	} };
 
 	struct Values
@@ -101,6 +105,8 @@ namespace Settings
 		float explosionStrength{ 1.0f };
 		bool  bodies{ true };        // a body dropping to the ground (killed) throws up a ring
 		float bodyStrength{ 1.0f };
+		bool  dragons{ true };       // dragons landing, taking off, beating their wings low, biting and sweeping tail and wings
+		float dragonStrength{ 1.0f };
 		bool  wind{ true };          // strong wind (the weather's, Dynamic Wind's) lifts leaves and a little dust
 		float windAmount{ 1.0f };
 		bool  windFlip{ false };     // the other way round (if leaves fly against the trees' sway)

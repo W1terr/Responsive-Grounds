@@ -124,7 +124,7 @@ def main():
         "meshes/ResponsiveGrounds/Leaves.nif": res / "meshes" / "ResponsiveGrounds" / "Leaves.nif",
         "meshes/ResponsiveGrounds/Particles.nif": res / "meshes" / "ResponsiveGrounds" / "Particles.nif",
     }
-    for texture in ("Leaf_n", "Debris", "Debris_n", "Snow", "Snow_n"):
+    for texture in ("Leaf_n", "Debris", "Debris_n", "Snow", "Snow_n", "Ash"):
         core[f"textures/ResponsiveGrounds/{texture}.dds"] = res / "textures" / "ResponsiveGrounds" / f"{texture}.dds"
     for sound in sorted((res / "Sound" / "fx" / "ResponsiveGrounds").glob("*.wav")):
         core[f"Sound/fx/ResponsiveGrounds/{sound.name}"] = sound

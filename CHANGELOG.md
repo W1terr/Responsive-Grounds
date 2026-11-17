@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1
+
+New
+- Ash: Solstheim's volcanic ash kicks up ash flakes, the snow flakes in the ash's grey (they flutter down the same way and settle soon after landing). Ash covered rocks and objects too, and the wind lifts them. Own section on the Settings page and an Ash category on the Textures page.
+- Dragons: a dragon landing throws up a big ring of whatever lies around it, and taking off another. Its wing beats blow the ground below while it hovers, lands or takes off, and gliding low it stirs up a strip behind it. A bite blows a blast from its jaws along the ground, its tail and wings sweeping the ground throw everything up, and its tail smashing down throws up a ring. Works from the dragons' own animation events (landing, takeoff, bite, tail and wing attacks, wing flaps) and their flight state. Dragons count up to 6000 units away, besides the NPC limit, and a dragon killed in the air is watched until it crashes. Own section on the Settings page (on/off, strength).
+- Rain: while it rains the ground is wet and no dust or rock dust flies up (clods, pebbles and everything else still do). Always on.
+
+Other
+- Ash covered objects and the Ash collision material give ash flakes instead of dust.
+- Shouts, explosions, heavy blows and falling bodies no longer throw leaves and dust up from the bottom of lakes and rivers.
+- Menu texts in all 9 languages.
+
 ## 3.0
 
 New

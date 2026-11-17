@@ -2,7 +2,7 @@
 
 #include "Settings.h"
 
-// Which landscape textures kick up leaves, green leaves, dirt, rocks and snow, and how much of each the ground has at a position. The
+// Which landscape textures kick up leaves, green leaves, dirt, rocks, snow and ash, and how much of each the ground has at a position. The
 // weights come from the land's own texture layers (the per vertex opacities the landscape shader blends), so they
 // follow the texture actually painted there, whatever the weather or the terrain mesh; with Seasons of Skyrim the
 // texture it shows there in this season (see Seasons).
@@ -37,6 +37,8 @@ namespace Terrain
 	//   rocks:  "rock" or "gravel" without "snow"; gravel 0.8, Riften's leafy rocks 0.4, mossy 0.5, tundra 0.6,
 	//           ash 0.6, else 0.75
 	//   snow:   "snow"; snowy cobbles 0.3, snowy rocks 0.5, snowy grass 0.6, snowy paths and dirt 0.7, else 1
+	//   ash:    "volcanic_ash" (Solstheim), names starting with or containing "_ash" / "ashland"; ash rocks 0.5, ash
+	//           with grass (tundra) 0.6, else 1
 	float DefaultStrength(Kind a_kind, std::string_view a_fileName);  // 0: not a default
 
 	// Northern Roads (Northern Roads.esp, its landscape textures under cotn\landscape and a few it borrows): each road

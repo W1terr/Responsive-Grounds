@@ -2,7 +2,7 @@
 
 #include "Terrain.h"
 
-// What the ground kicks up: a pool of small lit meshes in the world per kind (leaves, green leaves, dirt, rocks, snow),
+// What the ground kicks up: a pool of small lit meshes in the world per kind (leaves, green leaves, dirt, rocks, snow, ash),
 // kicked up around the feet of you (or your horse) and the NPCs and creatures near you while they move over matching
 // ground, by weapon swings, shouts, heavy blows on the ground, falling bodies and the wind, and carried by the air
 // bodies drag along and the swirl behind them. Leaves (both kinds) flutter down, settle and fade into the ground; snow

@@ -13,10 +13,11 @@ namespace Particles
 		using Settings::Kind;
 		using Settings::Flutters;
 		using Settings::IsLeaves;
+		using Settings::IsFlakes;
 		using Settings::kKinds;
 
 		constexpr auto kLeafModel = "ResponsiveGrounds\\Leaves.nif";        // Leaf0 ... Leaf7: 2 shapes x natural, golden, red, brown; GreenLeaf0 ... 7 the same green
-		constexpr auto kDebrisModel = "ResponsiveGrounds\\Particles.nif";   // RockPebble0-3, DirtClod0-3, RockDust0-1, DirtDust0-3, SnowFlake0-3
+		constexpr auto kDebrisModel = "ResponsiveGrounds\\Particles.nif";   // RockPebble0-3, DirtClod0-3, RockDust0-1, DirtDust0-3, SnowFlake0-3, AshFlake0-3
 
 		constexpr float kMaxAirTime = 9.0f;
 		constexpr float kSettleTime = 0.25f;   // landing: turning flat onto the ground
@@ -37,9 +38,9 @@ namespace Particles
 		constexpr float kPatchRecover = 25.0f;  // seconds for what was taken to fall to a third
 
 		// per second over full cover at a run, amount 1: leaves, dust and rock kicks (1-2 clumps + maybe a puff)
-		// per kind: leaves, green leaves, dust (dirt), rocks, snow (2-3 flakes a kick)
-		constexpr std::array<float, kKinds> kBaseRate{ 34.0f, 30.0f, 22.0f, 20.0f, 26.0f };
-		constexpr std::array<float, kKinds> kPuffChance{ 0.0f, 0.0f, 0.35f, 0.35f, 0.0f };  // a puff with a kick
+		// per kind: leaves, green leaves, dust (dirt), rocks, snow and ash (2-3 flakes a kick)
+		constexpr std::array<float, kKinds> kBaseRate{ 34.0f, 30.0f, 22.0f, 20.0f, 26.0f, 26.0f };
+		constexpr std::array<float, kKinds> kPuffChance{ 0.0f, 0.0f, 0.35f, 0.35f, 0.0f, 0.0f };  // a puff with a kick
 
 		enum class Style : std::uint8_t
 		{
@@ -267,6 +268,7 @@ namespace Particles
 			kRockPebbles,
 			kRockDust,
 			kSnowFlakes,
+			kAshFlakes,
 			kPools
 		};
 
@@ -278,6 +280,7 @@ namespace Particles
 			{ "rock pebbles", Kind::kRock, Style::kClump },
 			{ "rock dust", Kind::kRock, Style::kPuff },
 			{ "snow flakes", Kind::kSnow, Style::kLeaf },  // fly and land like little leaves, melt soon
+			{ "ash flakes", Kind::kAsh, Style::kLeaf },    // the same, ash grey
 		} };
 
 		const PuffLook& LookOf(const Pool& a_pool)
@@ -285,8 +288,8 @@ namespace Particles
 			return a_pool.kind == Kind::kRock ? kRockLook : kDustLook;
 		}
 
-		constexpr std::array<PoolIndex, kKinds> kMainPool{ kLeafPool, kGreenPool, kDirtClods, kRockPebbles, kSnowFlakes };
-		constexpr std::array<PoolIndex, kKinds> kPuffPool{ kPools, kPools, kDirtDust, kRockDust, kPools };
+		constexpr std::array<PoolIndex, kKinds> kMainPool{ kLeafPool, kGreenPool, kDirtClods, kRockPebbles, kSnowFlakes, kAshFlakes };
+		constexpr std::array<PoolIndex, kKinds> kPuffPool{ kPools, kPools, kDirtDust, kRockDust, kPools, kPools };
 
 		std::vector<RE::NiPointer<RE::NiNode>> models;     // the loaded models, kept so their shapes keep their parent
 		RE::NiPointer<RE::NiNode>              container;  // our node in the scene, parent of every particle
@@ -396,7 +399,27 @@ namespace Particles
 			float                slamReady{ 0.0f };
 			float                shoutReady{ 0.0f };
 			float                hitFrameAt{ -100.0f };  // its attack's hit frame (a big creature's blow lands then)
+
+			// dragons
+			bool                      dragon{ false };
+			RE::FLY_STATE             flyState{ RE::FLY_STATE::kNone };
+			float                     wingBeatAt{ 0.0f };          // its next downdraft
+			float                     wingBeatsUntil{ -100.0f };  // beating hard after a takeoff
+			float                     lastFlapAt{ -100.0f };      // its last wing flap event
+			float                     landedAt{ -100.0f };
+			float                     sweepUntil{ -100.0f };      // its tail or a wing sweeping the ground
+			int                       sweepPart{ 0 };             // 0 tail, 1 left wing, 2 right wing
+			bool                      sweepHad{ false };
+			std::array<Vec, 4>        sweepLast{};
+			std::array<float, kKinds> sweepDebt{};
 		};
+
+		bool IsDragon(RE::Actor* a_actor)
+		{
+			static const auto keyword = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("ActorTypeDragon");
+			const auto        race = a_actor ? a_actor->GetRace() : nullptr;
+			return race && (keyword ? race->HasKeyword(keyword) : race->HasKeywordString("ActorTypeDragon"));
+		}
 
 		std::vector<std::unique_ptr<Mover>> movers;          // [0]: you
 		Mover*                              mover{ nullptr };  // whose kick is being made right now
@@ -432,6 +455,10 @@ namespace Particles
 		std::string      objectName;         // what you stand on, for the status: a material ...
 		std::string      objectTexture;      // ... or the landscape texture painted on it
 		bool             raised{ false };    // up on something that isn't ground
+		bool             raining{ false };   // the weather rains here: the ground is wet, no dust flies (always, not a setting)
+
+		// dust and rock dust puffs: the menu's choice, and never in the rain
+		bool DustNow() { return tuning.puffs && !raining; }
 
 		std::atomic<bool> testRequested{ false };
 
@@ -441,6 +468,19 @@ namespace Particles
 		std::vector<RE::FormID> shoutSignals;
 		std::vector<RE::FormID> hitSignals;
 		std::vector<RE::FormID> deathSignals;
+
+		// what a dragon's animations announce (their own annotations)
+		enum class DragonEvent : std::uint8_t
+		{
+			kLand,       // DragonLandEffect, DragonForcefulLandEffect: it touched down
+			kTakeoff,    // DragonTakeoffEffect
+			kBite,       // DragonBiteEffect
+			kTail,       // DragonTailAttackEffect
+			kLeftWing,   // DragonLeftWingAttackEffect
+			kRightWing,  // DragonRightWingAttackEffect
+			kFlap        // SoundPlay.NPCDragonWingFlap...: a wing beat
+		};
+		std::vector<std::pair<RE::FormID, DragonEvent>> dragonSignals;
 
 		struct Blast
 		{
@@ -753,7 +793,7 @@ namespace Particles
 				}
 				const float tiltAngle = Random(0.0f, 6.2832f);
 				a_p.rot = Normalized(Mul(AxisAngle({ std::cos(tiltAngle), std::sin(tiltAngle), 0.0f }, Gauss(0.35f)), r));
-				a_p.size = (a_pool.kind == Kind::kSnow ? Random(0.5f, 1.4f) : Random(0.8f, 1.25f)) * tuning.kinds[a_pool.kind].size;
+				a_p.size = (IsFlakes(a_pool.kind) ? Random(0.5f, 1.4f) : Random(0.8f, 1.25f)) * tuning.kinds[a_pool.kind].size;
 				Seed(a_p);
 			}
 			a_p.scale = a_p.size;
@@ -855,8 +895,8 @@ namespace Particles
 				TakeLeaf(a_at);
 			}
 			const auto  mainIndex = kMainPool[a_kind];
-			const int   count = a_kind == Kind::kSnow ? (Random(0.0f, 1.0f) < 0.5f ? 3 : 2) : IsLeaves(a_kind) ? 1 : (Random(0.0f, 1.0f) < 0.4f ? 2 : 1);
-			const float spread = a_kind == Kind::kSnow ? 4.0f : 2.0f;
+			const int   count = IsFlakes(a_kind) ? (Random(0.0f, 1.0f) < 0.5f ? 3 : 2) : IsLeaves(a_kind) ? 1 : (Random(0.0f, 1.0f) < 0.4f ? 2 : 1);
+			const float spread = IsFlakes(a_kind) ? 4.0f : 2.0f;
 			for (int i = 0; i < count; ++i) {
 				auto&      main = pools[mainIndex];
 				const auto p = Acquire(main);
@@ -871,7 +911,7 @@ namespace Particles
 					LaunchClump(main, *p, a_kind, a_kick, a_sideSign);
 				}
 			}
-			if (!Flutters(a_kind) && tuning.puffs && Random(0.0f, 1.0f) < kPuffChance[a_kind]) {
+			if (!Flutters(a_kind) && DustNow() && Random(0.0f, 1.0f) < kPuffChance[a_kind]) {
 				auto&      puffs = pools[kPuffPool[a_kind]];
 				const auto p = Acquire(puffs);
 				if (p && p->node) {
@@ -914,7 +954,7 @@ namespace Particles
 		void Throw(Kind a_kind, const Vec& a_at, float a_ground, const Vec& a_push, float a_lift)
 		{
 			const auto mainIndex = kMainPool[a_kind];
-			const bool hasPuff = tuning.puffs && kPuffPool[a_kind] != kPools;
+			const bool hasPuff = DustNow() && kPuffPool[a_kind] != kPools;
 			const bool puff = hasPuff && Random(0.0f, 1.0f) < 0.45f;
 			if (!puff) {
 				auto&      pool = pools[mainIndex];
@@ -1032,7 +1072,7 @@ namespace Particles
 			a_p.restRot = Normalized(Mul(Between(kUp, slope), rest));
 			// leaves are cupped (face down they stand on the rim), clumps domed (face up they stand on the rim)
 			const bool  leaf = a_pool.style == Style::kLeaf;
-			const float rim = a_p.water ? 0.25f : a_pool.kind == Kind::kSnow ? 0.2f : leaf ? (faceDown ? 1.0f * a_p.size : 0.35f) : (faceDown ? 0.15f : 0.55f * a_p.size);
+			const float rim = a_p.water ? 0.25f : IsFlakes(a_pool.kind) ? 0.2f : leaf ? (faceDown ? 1.0f * a_p.size : 0.35f) : (faceDown ? 0.15f : 0.55f * a_p.size);
 			a_p.restZ = h0 + rim;
 			a_p.ground = h0;
 			a_p.settleFrom = a_p.rot;
@@ -1048,6 +1088,9 @@ namespace Particles
 				break;
 			case Kind::kSnow:
 				a_p.restFor = Random(0.3f, 0.9f);  // melts into the snow
+				break;
+			case Kind::kAsh:
+				a_p.restFor = Random(0.6f, 1.5f);  // settles into the ash
 				break;
 			default:
 				a_p.restFor = Random(1.0f, 2.5f);
@@ -1095,7 +1138,7 @@ namespace Particles
 				} else {
 					a_p.ground = land;
 				}
-				// leaves (and snow flakes) come down on the water and float there
+				// leaves (and flakes) come down on the water and float there
 				a_p.water = false;
 				if (float water = 0.0f; Flutters(a_pool.kind) && a_p.pos.z - a_p.ground < 400.0f && WaterAt(a_p.pos, a_p.ground, water)) {
 					a_p.ground = water;
@@ -1159,7 +1202,7 @@ namespace Particles
 				if (a_pool.style == Style::kPuff) {
 					Drift(a_pool, a_p, a_dt);
 				} else {
-					Fly(a_pool, a_p, a_pool.kind == Kind::kSnow ? kFlakeFlight : a_pool.style == Style::kLeaf ? kLeafFlight : kClumpFlight, a_dt);
+					Fly(a_pool, a_p, IsFlakes(a_pool.kind) ? kFlakeFlight : a_pool.style == Style::kLeaf ? kLeafFlight : kClumpFlight, a_dt);
 				}
 				break;
 			case Phase::kSettle:
@@ -1260,6 +1303,8 @@ namespace Particles
 			tuning.slamStrength = s.slamStrength;
 			tuning.bodies = s.bodies;
 			tuning.bodyStrength = s.bodyStrength;
+			tuning.dragons = s.dragons;
+			tuning.dragonStrength = s.dragonStrength;
 			tuning.explosions = s.explosions;
 			tuning.explosionStrength = s.explosionStrength;
 			tuning.wind = s.wind;
@@ -1280,7 +1325,7 @@ namespace Particles
 			tuning.debugLog = s.debugLog;
 			Sounds::Configure(s.enabled && s.sounds, s.leafVolume, s.rockVolume);
 
-			// leaves (both kinds) and snow get their whole limit; dust and rocks split theirs: three quarters clumps, a quarter puffs
+			// leaves (both kinds), snow and ash get their whole limit; dust and rocks split theirs: three quarters clumps, a quarter puffs
 			for (std::size_t k = 0; k < kKinds; ++k) {
 				const auto max = static_cast<std::size_t>(tuning.kinds[k].enabled ? tuning.kinds[k].maxParticles : 0);
 				if (Flutters(static_cast<Kind>(k))) {
@@ -1398,10 +1443,10 @@ namespace Particles
 			}
 			if (tuning.debugLog && logTimer <= 0.0f) {
 				logTimer = 2.0f;
-				logs::info("status: on land {}, ground '{}' {:.0f}%, cover leaves {:.2f} green {:.2f} dust {:.2f} rocks {:.2f} snow {:.2f}, speed {:.0f}, kick {:.2f}{}, NPCs {}, waves {}, flying {}/{}/{}/{}/{}, landed {}/{}/{}/{}/{}",
-					a_grounded, next.texture, next.textureShare * 100.0f, next.covers[0], next.covers[1], next.covers[2], next.covers[3], next.covers[4], you.speed, you.kick,
-					you.mounted ? " (horse)" : "", next.npcs, waves.size(), next.flying[0], next.flying[1], next.flying[2], next.flying[3], next.flying[4], next.landed[0],
-					next.landed[1], next.landed[2], next.landed[3], next.landed[4]);
+				logs::info("status: on land {}, ground '{}' {:.0f}%, cover leaves {:.2f} green {:.2f} dust {:.2f} rocks {:.2f} snow {:.2f} ash {:.2f}, speed {:.0f}, kick {:.2f}{}, NPCs {}, waves {}, flying {}/{}/{}/{}/{}/{}, landed {}/{}/{}/{}/{}/{}",
+					a_grounded, next.texture, next.textureShare * 100.0f, next.covers[0], next.covers[1], next.covers[2], next.covers[3], next.covers[4], next.covers[5], you.speed,
+					you.kick, you.mounted ? " (horse)" : "", next.npcs, waves.size(), next.flying[0], next.flying[1], next.flying[2], next.flying[3],
+					next.flying[4], next.flying[5], next.landed[0], next.landed[1], next.landed[2], next.landed[3], next.landed[4], next.landed[5]);
 			}
 			std::scoped_lock guard(status_lock);
 			status = std::move(next);
@@ -1438,6 +1483,30 @@ namespace Particles
 				const std::string_view tag(a_event->tag.c_str());
 				const bool             swing = SameText(tag, "weaponSwing") || SameText(tag, "weaponLeftSwing") || SameText(tag, "preHitFrame") || SameText(tag, "HitFrame");
 				const bool             shout = SameText(tag, "Voice_SpellFire_Event") || SameText(tag, "ShoutRelease") || SameText(tag, "shoutStart");
+				if (tag.starts_with("Dragon") || tag.starts_with("SoundPlay.NPCDragonWingFlap")) {
+					std::optional<DragonEvent> what;
+					if (tag == "DragonLandEffect" || tag == "DragonForcefulLandEffect") {
+						what = DragonEvent::kLand;
+					} else if (tag == "DragonTakeoffEffect") {
+						what = DragonEvent::kTakeoff;
+					} else if (tag == "DragonBiteEffect") {
+						what = DragonEvent::kBite;
+					} else if (tag == "DragonTailAttackEffect") {
+						what = DragonEvent::kTail;
+					} else if (tag == "DragonLeftWingAttackEffect") {
+						what = DragonEvent::kLeftWing;
+					} else if (tag == "DragonRightWingAttackEffect") {
+						what = DragonEvent::kRightWing;
+					} else if (tag.starts_with("SoundPlay.NPCDragonWingFlap")) {
+						what = DragonEvent::kFlap;
+					}
+					if (what) {
+						std::scoped_lock guard(signalLock);
+						if (dragonSignals.size() < 32) {
+							dragonSignals.emplace_back(a_event->holder->GetFormID(), *what);
+						}
+					}
+				}
 				if (swing || shout) {
 					std::scoped_lock guard(signalLock);
 					(swing ? swingSignals : shoutSignals).push_back(a_event->holder->GetFormID());
@@ -1483,6 +1552,7 @@ namespace Particles
 			a_actor->RemoveAnimationGraphEventSink(EventSink::GetSingleton());
 			if (!a_mover.player) {
 				a_mover.footprint = std::clamp(a_actor->GetHeight() / 128.0f, 0.6f, 3.5f);  // its size: measured once per 3D
+				a_mover.dragon = IsDragon(a_actor);
 			}
 			if (root && a_actor->AddAnimationGraphEventSink(EventSink::GetSingleton())) {
 				a_mover.watchedRoot = root;
@@ -1563,7 +1633,7 @@ namespace Particles
 				LaunchLeaf(pool, *p, 0.5f, Random(0.0f, 1.0f) < 0.5f ? -1.0f : 1.0f, true);
 				p->vel = push * Random(0.25f, 0.5f) + kUp * ((80.0f + 0.12f * std::min(speed, 1500.0f)) * Random(0.6f, 1.2f) * tuning.lift) +
 				         Vec{ Gauss(15.0f), Gauss(15.0f), 0.0f };
-			} else if (tuning.puffs) {
+			} else if (DustNow()) {
 				auto&      pool = pools[kPuffPool[a_kind]];
 				const auto p = Acquire(pool);
 				if (!p || !p->node) {
@@ -1818,6 +1888,9 @@ namespace Particles
 						if (ground - LandHeight(at, ground) > 40.0f) {
 							continue;  // a rock, a roof, a walkway: not the land whose cover this is
 						}
+						if (float water = 0.0f; WaterAt(at, ground + 2.0f, water)) {
+							continue;  // under water
+						}
 						const float f = w.strength * (1.0f - 0.6f * r / w.reach);
 						Throw(static_cast<Kind>(k), at, ground, out * (Random(200.0f, 420.0f) * f), (Flutters(static_cast<Kind>(k)) ? 220.0f : 160.0f) * f);
 					}
@@ -1856,6 +1929,204 @@ namespace Particles
 			if (tuning.debugLog) {
 				logs::info("{} shouted: a blast of air along the ground", a_actor->IsPlayerRef() ? std::string("you") : std::format("{:08X}", a_actor->GetFormID()));
 			}
+		}
+
+		// ---- dragons
+
+		constexpr float kDragonReach = 900.0f;    // how high above the ground a dragon's wing beats still reach it
+		constexpr float kDragonRange = 6000.0f;   // dragons this close count (besides the NPC limit)
+
+		bool NodePos(RE::NiAVObject* a_root, const char* a_name, Vec& a_pos)
+		{
+			const auto node = a_root ? a_root->GetObjectByName(a_name) : nullptr;
+			if (!node) {
+				return false;
+			}
+			a_pos = node->world.translate;
+			return true;
+		}
+
+		// the ground under a dragon (rays pass through its own body)
+		float DragonGround(RE::Actor* a_actor, const Vec& a_at)
+		{
+			rayFilter = RayFilterOf(a_actor);
+			const float ground = GroundAt(a_at, LandHeight(a_at, a_at.z - 2000.0f));
+			rayFilter = yourRayFilter;
+			return ground;
+		}
+
+		// air pushed down by its wings: a ring on the ground under it, stronger the lower it is
+		void Downdraft(const Mover& a_m, float a_height, float a_ground, float a_factor)
+		{
+			const float f = std::pow(std::clamp(1.0f - a_height / kDragonReach, 0.0f, 1.0f), 1.3f) * a_factor * tuning.dragonStrength;
+			if (f < 0.06f) {
+				return;
+			}
+			StartWave({ a_m.pos.x, a_m.pos.y, a_ground }, {}, -1.0f, 700.0f, 300.0f + 450.0f * std::min(f, 1.2f), f);
+		}
+
+		// what one of its animation events does to the ground
+		void DragonDoes(Mover& a_m, RE::Actor* a_actor, DragonEvent a_what)
+		{
+			if (!tuning.dragons || !a_actor || !a_actor->Get3D()) {
+				return;
+			}
+			const float ds = tuning.dragonStrength;
+			const float ground = DragonGround(a_actor, a_m.pos);
+			const float height = a_m.pos.z - ground;
+			const Vec   below{ a_m.pos.x, a_m.pos.y, ground };
+			switch (a_what) {
+			case DragonEvent::kLand:
+				if (height < 300.0f && clock - a_m.landedAt > 1.0f) {
+					StartWave(below, {}, -1.0f, 900.0f, 950.0f, 1.6f * ds);
+					a_m.landedAt = clock;
+					if (tuning.debugLog) {
+						logs::info("a dragon ({:08X}) landed: a ring of strength {:.2f}", a_m.formID, 1.6f * ds);
+					}
+				}
+				break;
+			case DragonEvent::kTakeoff:
+				if (height < 400.0f) {
+					StartWave(below, {}, -1.0f, 800.0f, 800.0f, 1.3f * ds);
+					a_m.wingBeatsUntil = clock + 3.0f;
+					a_m.wingBeatAt = clock + 0.5f;
+					if (tuning.debugLog) {
+						logs::info("a dragon ({:08X}) took off", a_m.formID);
+					}
+				}
+				break;
+			case DragonEvent::kBite:
+				{
+					// a blast from its jaws along the ground in front of it, and a little ring where they snap
+					const auto root = a_actor->Get3D(false);
+					Vec        head, lip;
+					if (!NodePos(root, "NPC Head", head) || !NodePos(root, "NPC LUpLip", lip)) {
+						break;
+					}
+					Vec dir = Flat(lip - head);
+					if (dir.Unitize() < 1e-3f) {
+						dir = a_m.dir;
+					}
+					const float g = DragonGround(a_actor, lip);
+					if (lip.z - g < 260.0f) {
+						StartWave({ lip.x, lip.y, g }, dir, std::cos(0.6f), 1100.0f, 480.0f, 1.1f * ds);
+						StartWave({ lip.x, lip.y, g }, {}, -1.0f, 600.0f, 180.0f, 0.6f * ds);
+						if (tuning.debugLog) {
+							logs::info("a dragon ({:08X}) bit: a blast {:.0f} units above the ground", a_m.formID, lip.z - g);
+						}
+					}
+					break;
+				}
+			case DragonEvent::kTail:
+			case DragonEvent::kLeftWing:
+			case DragonEvent::kRightWing:
+				a_m.sweepUntil = clock + (a_what == DragonEvent::kTail ? 0.9f : 0.7f);
+				a_m.sweepPart = a_what == DragonEvent::kTail ? 0 : a_what == DragonEvent::kLeftWing ? 1 : 2;
+				a_m.sweepHad = false;
+				a_m.sweepDebt = {};
+				break;
+			case DragonEvent::kFlap:
+				if (height < kDragonReach && clock - a_m.lastFlapAt > 0.35f) {
+					Downdraft(a_m, height, ground, 1.0f);
+					a_m.lastFlapAt = clock;
+					a_m.wingBeatAt = clock + 1.4f;  // the beats it announces itself replace the timed ones
+				}
+				break;
+			}
+		}
+
+		// its tail or a wing sweeping along the ground: everything it passes low over is thrown along with it; the
+		// tail smashing down throws up a ring
+		void DragonSweep(Mover& a_m, RE::Actor* a_actor, float a_dt, float a_ground)
+		{
+			static constexpr std::array<std::array<const char*, 4>, 3> kNodes{ {
+				{ "NPC Tail3", "NPC Tail5", "NPC Tail7", "NPC TailHub" },
+				{ "NPC LForearm2", "NPC LHand", "NPC LFinger22", "NPC LFinger32" },
+				{ "NPC RForearm2", "NPC RHand", "NPC RFinger22", "NPC RFinger32" },
+			} };
+			if (clock > a_m.sweepUntil) {
+				a_m.sweepHad = false;
+				return;
+			}
+			const auto root = a_actor->Get3D(false);
+			if (!root) {
+				return;
+			}
+			mover = &a_m;
+			const float ds = tuning.dragonStrength;
+			const auto& names = kNodes[a_m.sweepPart];
+			for (std::size_t i = 0; i < names.size(); ++i) {
+				Vec p;
+				if (!NodePos(root, names[i], p)) {
+					continue;
+				}
+				const Vec last = a_m.sweepLast[i];
+				a_m.sweepLast[i] = p;
+				if (!a_m.sweepHad) {
+					continue;
+				}
+				const Vec   vel = (p - last) * (1.0f / a_dt);
+				const float speed = vel.Length();
+				const float g = i + 1 == names.size() ? DragonGround(a_actor, p) : a_ground;
+				const float low = p.z - g;
+				if (speed < 250.0f || speed > 8000.0f || low > 160.0f) {
+					continue;
+				}
+				const float f = std::clamp((speed - 250.0f) / 900.0f, 0.0f, 1.5f) * std::clamp(1.0f - low / 160.0f, 0.2f, 1.0f) * ds;
+				// the tail's tip hitting the ground
+				if (i + 1 == names.size() && a_m.sweepPart == 0 && tuning.slams && vel.z < -350.0f && low < 50.0f && clock > a_m.slamReady) {
+					Slam(a_m, { p.x, p.y, g }, std::clamp((-vel.z - 350.0f) / 900.0f, 0.4f, 1.5f) * 1.5f * ds, "a tail");
+				}
+				Vec push = Flat(vel) * 0.5f;
+				if (const float flat = push.Length(); flat > 600.0f) {
+					push *= 600.0f / flat;
+				}
+				rayFilter = RayFilterOf(a_actor);
+				for (std::size_t k = 0; k < kKinds; ++k) {
+					if (!tuning.kinds[k].enabled) {
+						continue;
+					}
+					a_m.sweepDebt[k] = std::min(a_m.sweepDebt[k] + 50.0f * tuning.kinds[k].amount * f * a_dt, 6.0f);
+					while (a_m.sweepDebt[k] >= 1.0f) {
+						a_m.sweepDebt[k] -= 1.0f;
+						const Vec at{ p.x + Gauss(20.0f), p.y + Gauss(20.0f), g };
+						if (Random(0.0f, 1.0f) >= CoverAt(at)[k]) {
+							continue;
+						}
+						Throw(static_cast<Kind>(k), at, GroundAt(at, g), push, (Flutters(static_cast<Kind>(k)) ? 220.0f : 160.0f) * std::min(f, 1.2f));
+					}
+				}
+				rayFilter = yourRayFilter;
+			}
+			a_m.sweepHad = true;  // positions to measure the next frame's motion from
+		}
+
+		// a dragon's frame: its wing beats near the ground (hovering, landing, taking off, gliding low), a touchdown
+		// without a landing event, its sweeps
+		void DragonFrame(Mover& a_m, RE::Actor* a_actor, float a_dt)
+		{
+			if (!tuning.dragons) {
+				return;
+			}
+			const auto  state = a_actor->AsActorState()->GetFlyState();
+			const auto  last = a_m.flyState;
+			const float ground = DragonGround(a_actor, a_m.pos);
+			const float height = a_m.pos.z - ground;
+			a_m.flyState = state;
+			using FS = RE::FLY_STATE;
+			if ((last == FS::kLanding || last == FS::kHovering) && state == FS::kNone && height < 300.0f && clock - a_m.landedAt > 1.5f) {
+				DragonDoes(a_m, a_actor, DragonEvent::kLand);
+			}
+			const bool hard = clock < a_m.wingBeatsUntil;
+			const bool beating = state == FS::kHovering || state == FS::kLanding || state == FS::kTakeOff || hard;
+			if (beating && height < kDragonReach && clock >= a_m.wingBeatAt) {
+				Downdraft(a_m, height, ground, hard ? 1.1f : 0.9f);
+				a_m.wingBeatAt = clock + (hard ? 0.55f : 0.9f);
+			} else if (state == FS::kCruising && height < 0.55f * kDragonReach && a_m.speed > 300.0f && clock >= a_m.wingBeatAt) {
+				Downdraft(a_m, height * 1.8f, ground, 0.7f);  // gliding low: its wake stirs up a strip behind it
+				a_m.wingBeatAt = clock + 0.45f;
+			}
+			DragonSweep(a_m, a_actor, a_dt, ground);
 		}
 
 		// ---- what holds a mover up
@@ -2036,13 +2307,15 @@ namespace Particles
 		{
 			const auto player = RE::PlayerCharacter::GetSingleton();
 			const auto actor = RE::TESForm::LookupByID<RE::Actor>(a_formID);
-			if (!tuning.bodies || !player || !actor || !actor->Get3D() || (actor->GetPosition() - player->GetPosition()).Length() > std::max(tuning.npcRange, 2048.0f) ||
+			const bool dragon = actor && tuning.dragons && IsDragon(actor);
+			if (!tuning.bodies || !player || !actor || !actor->Get3D() ||
+				(actor->GetPosition() - player->GetPosition()).Length() > (dragon ? kDragonRange : std::max(tuning.npcRange, 2048.0f)) ||
 				std::ranges::any_of(corpses, [a_formID](const Corpse& a_c) { return a_c.formID == a_formID; })) {
 				return;
 			}
 			Corpse corpse;
 			corpse.formID = a_formID;
-			corpse.until = clock + 6.0f;
+			corpse.until = clock + (dragon ? 12.0f : 6.0f);  // a dragon may fall out of the sky first
 			corpses.push_back(corpse);
 		}
 
@@ -2093,6 +2366,13 @@ namespace Particles
 				windStrength = 0.0f;
 				return;
 			}
+			// rain (also while it fades in and out between weathers): wet ground, no dust
+			if (const bool rain = sky->IsRaining(); rain != raining) {
+				raining = rain;
+				if (tuning.debugLog) {
+					logs::info("weather: {}", rain ? "raining, no dust" : "dry, dust again");
+				}
+			}
 			windStrength = std::clamp(sky->windSpeed, 0.0f, 1.0f);
 			float angle = sky->windAngle;
 			if (std::abs(angle) > 6.3f) {
@@ -2125,7 +2405,7 @@ namespace Particles
 				return;
 			}
 			mover = movers.front().get();
-			static constexpr std::array<float, kKinds> kRate{ 26.0f, 22.0f, 4.0f, 0.0f, 18.0f };
+			static constexpr std::array<float, kKinds> kRate{ 26.0f, 22.0f, 4.0f, 0.0f, 18.0f, 18.0f };
 			const float speed = wind.Length();
 			const float view = std::atan2(cameraFwd.y, cameraFwd.x);
 			for (std::size_t k = 0; k < kKinds; ++k) {
@@ -2169,7 +2449,7 @@ namespace Particles
 						} else {
 							Throw(static_cast<Kind>(k), at, ground, windDir * (speed * Random(0.5f, 0.9f)), Random(120.0f, 260.0f));
 						}
-					} else if (tuning.puffs && kPuffPool[k] != kPools) {
+					} else if (DustNow() && kPuffPool[k] != kPools) {
 						auto&      pool = pools[kPuffPool[k]];
 						const auto p = Acquire(pool);
 						if (!p || !p->node) {
@@ -2196,8 +2476,10 @@ namespace Particles
 			}
 			selectTimer = 0.5f;
 			std::vector<std::pair<float, RE::FormID>> nearby;
+			std::vector<std::pair<float, RE::FormID>> dragons;  // besides the NPC limit, from farther away
 			const auto                                lists = RE::ProcessLists::GetSingleton();
-			if (tuning.npcs && tuning.npcMax > 0 && lists) {
+			const bool                                npcs = tuning.npcs && tuning.npcMax > 0;
+			if ((npcs || tuning.dragons) && lists) {
 				const Vec   you = a_player->GetPosition();
 				const float range2 = tuning.npcRange * tuning.npcRange;
 				for (const auto& handle : lists->highActorHandles) {
@@ -2207,7 +2489,13 @@ namespace Particles
 						continue;
 					}
 					const float d2 = (actor->GetPosition() - you).SqrLength();
-					if (d2 > range2) {
+					if (IsDragon(actor.get())) {
+						if (tuning.dragons && d2 < kDragonRange * kDragonRange) {
+							dragons.emplace_back(d2, actor->GetFormID());
+						}
+						continue;
+					}
+					if (!npcs || d2 > range2) {
 						continue;
 					}
 					if (!tuning.npcCreatures) {
@@ -2222,6 +2510,11 @@ namespace Particles
 				if (nearby.size() > static_cast<std::size_t>(tuning.npcMax)) {
 					nearby.resize(static_cast<std::size_t>(tuning.npcMax));
 				}
+				std::ranges::sort(dragons);
+				if (dragons.size() > 3) {
+					dragons.resize(3);
+				}
+				nearby.insert(nearby.end(), dragons.begin(), dragons.end());
 			}
 			// drop the ones no longer chosen (you stay first)
 			for (auto it = movers.begin() + 1; it != movers.end();) {
@@ -2342,7 +2635,7 @@ namespace Particles
 					(land > pos.z - 999.0f ? 1u : 0u) | (a_m.onLand ? 2u : 0u) | (a_m.swimming ? 4u : 0u) | (a_m.mounted ? 8u : 0u) | (a_m.onObject ? 16u : 0u) |
 						(a_m.raised ? 32u : 0u) | (static_cast<std::uint32_t>(a_m.materialIndex + 1) << 8),
 					[&] {
-						return std::format("ground: land found {}, on the landscape {}, on an object {}{}, swimming {}, mounted {}{}, support layer {}, gives leaves {:.0f}% green leaves {:.0f}% dust {:.0f}% rocks {:.0f}% snow {:.0f}%",
+						return std::format("ground: land found {}, on the landscape {}, on an object {}{}, swimming {}, mounted {}{}, support layer {}, gives leaves {:.0f}% green leaves {:.0f}% dust {:.0f}% rocks {:.0f}% snow {:.0f}% ash {:.0f}%",
 							land > pos.z - 999.0f, a_m.onLand, a_m.onObject,
 							a_m.onObject ? std::format(" ({}{}{}{}{})", a_m.materialIndex >= 0 ? Terrain::Materials()[a_m.materialIndex].name : std::format("material {}", std::to_underlying(material)),
 											   support.model.empty() ? "" : std::format(", {}", support.model),
@@ -2353,12 +2646,12 @@ namespace Particles
 											   a_m.raised ? ", raised: not ground" : support.groundLike ? ", ground" : "") :
 										   "",
 							a_m.swimming, a_m.mounted, a_m.onLand ? "" : std::format(" ({:.0f} units above the land)", pos.z - land), support.layer, covers[0] * 100.0f,
-							covers[1] * 100.0f, covers[2] * 100.0f, covers[3] * 100.0f, covers[4] * 100.0f);
+							covers[1] * 100.0f, covers[2] * 100.0f, covers[3] * 100.0f, covers[4] * 100.0f, covers[5] * 100.0f);
 					});
 				const auto tens = [](float a_cover) { return static_cast<std::uint32_t>(std::round(a_cover * 10.0f)); };
-				Diagnose(kLineCover, tens(covers[0]) | tens(covers[1]) << 4 | tens(covers[2]) << 8 | tens(covers[3]) << 12 | tens(covers[4]) << 16, [&] {
-					return std::format("under you: leaves about {}0%, green leaves {}0%, dust {}0%, rocks {}0%, snow {}0%", tens(covers[0]), tens(covers[1]), tens(covers[2]),
-						tens(covers[3]), tens(covers[4]));
+				Diagnose(kLineCover, tens(covers[0]) | tens(covers[1]) << 4 | tens(covers[2]) << 8 | tens(covers[3]) << 12 | tens(covers[4]) << 16 | tens(covers[5]) << 20, [&] {
+					return std::format("under you: leaves about {}0%, green leaves {}0%, dust {}0%, rocks {}0%, snow {}0%, ash {}0%", tens(covers[0]), tens(covers[1]),
+						tens(covers[2]), tens(covers[3]), tens(covers[4]), tens(covers[5]));
 				});
 
 				if (testRequested.exchange(false)) {
@@ -2367,7 +2660,8 @@ namespace Particles
 					Burst(Kind::kDirt, 16, true);
 					Burst(Kind::kRock, 16, true);
 					Burst(Kind::kSnow, 14, true);
-					logs::info("test: threw leaves, green leaves, dust, rocks and snow around you at {:.0f}, {:.0f}, {:.0f}", pos.x, pos.y, pos.z);
+					Burst(Kind::kAsh, 14, true);
+					logs::info("test: threw leaves, green leaves, dust, rocks, snow and ash around you at {:.0f}, {:.0f}, {:.0f}", pos.x, pos.y, pos.z);
 				}
 			}
 
@@ -2454,6 +2748,8 @@ namespace Particles
 					pool = kDirtDust;
 				} else if (name.starts_with("SnowFlake")) {
 					pool = kSnowFlakes;
+				} else if (name.starts_with("AshFlake")) {
+					pool = kAshFlakes;
 				}
 				if (pool < kPools) {
 					pools[pool].templates.emplace_back(child);
@@ -2528,6 +2824,7 @@ namespace Particles
 		shoutSignals.clear();
 		hitSignals.clear();
 		deathSignals.clear();
+		dragonSignals.clear();
 		blastSignals.clear();
 		blasts.clear();
 	}
@@ -2592,8 +2889,10 @@ namespace Particles
 
 		// animation events and casts since the last frame
 		std::vector<RE::FormID> swings, shouts, hits, deaths;
+		std::vector<std::pair<RE::FormID, DragonEvent>> dragonEvents;
 		{
 			std::scoped_lock guard(signalLock);
+			dragonEvents.swap(dragonSignals);
 			swings.swap(swingSignals);
 			shouts.swap(shoutSignals);
 			hits.swap(hitSignals);
@@ -2642,7 +2941,7 @@ namespace Particles
 				m->mounted = false;
 				Track(*m, actor, dt);
 			}
-			m->awake = m->rawSpeed >= 3.0f || m->speed >= 3.0f || clock <= m->swingUntil || m->airborneFor > 0.0f;
+			m->awake = m->rawSpeed >= 3.0f || m->speed >= 3.0f || clock <= m->swingUntil || m->airborneFor > 0.0f || (m->dragon && tuning.dragons);
 			anyAwake = anyAwake || m->awake;
 		}
 
@@ -2679,6 +2978,13 @@ namespace Particles
 		yourRayFilter = RayFilterOf(body);
 		rayFilter = yourRayFilter;
 
+		// what the dragons' animations announced
+		for (const auto& [id, what] : dragonEvents) {
+			if (const auto m = FindMover(id); m && m->dragon && m->actor) {
+				DragonDoes(*m, m->actor, what);
+			}
+		}
+
 		// everyone's steps, landings and attacks
 		for (auto& m : movers) {
 			if (!m->awake && !(m->player && testRequested)) {
@@ -2693,6 +2999,9 @@ namespace Particles
 				continue;
 			}
 			Kicks(*m, m->player ? body : m->actor, m->actor, dt);
+			if (m->dragon) {
+				DragonFrame(*m, m->actor, dt);
+			}
 		}
 		rayFilter = yourRayFilter;
 		Bodies(dt);

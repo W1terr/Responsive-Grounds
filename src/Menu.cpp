@@ -28,7 +28,8 @@ namespace Menu
 		constexpr auto kSection = "Responsive Grounds";
 
 		const std::array<ImVec4, kKinds> kColors{ ImVec4{ 0.95f, 0.65f, 0.25f, 1.0f }, ImVec4{ 0.55f, 0.82f, 0.35f, 1.0f },
-			ImVec4{ 0.8f, 0.62f, 0.42f, 1.0f }, ImVec4{ 0.7f, 0.72f, 0.74f, 1.0f }, ImVec4{ 0.78f, 0.88f, 1.0f, 1.0f } };
+			ImVec4{ 0.8f, 0.62f, 0.42f, 1.0f }, ImVec4{ 0.7f, 0.72f, 0.74f, 1.0f }, ImVec4{ 0.78f, 0.88f, 1.0f, 1.0f },
+			ImVec4{ 0.66f, 0.64f, 0.62f, 1.0f } };
 		const ImVec4 kDim{ 0.6f, 0.6f, 0.6f, 1.0f };
 		const ImVec4 kWarn{ 1.0f, 0.45f, 0.35f, 1.0f };
 
@@ -38,6 +39,7 @@ namespace Menu
 			"How much dirt and mud your steps kick up: clods that bounce once and dust puffs.",
 			"How much your steps kick up on rocky ground, rocks and cliffs: pebbles that bounce once and rock dust.",
 			"How many snow flakes your steps kick up on snow. They flutter down slower than leaves and melt soon after landing.",
+			"How many ash flakes your steps kick up on Solstheim's ash. They flutter down like the snow and settle soon after landing.",
 		};
 		constexpr std::array<const char*, kKinds> kMostHint{
 			"Leaves in the air and lying on the ground together. When all are in use, the ones that landed longest ago are reused. Lower it if you need the performance.",
@@ -45,13 +47,15 @@ namespace Menu
 			"Clods and dust puffs together (a quarter of them puffs). When all are in use, the oldest are reused. Lower it if you need the performance.",
 			"Pebbles and rock dust together (a quarter of them dust). When all are in use, the oldest are reused. Lower it if you need the performance.",
 			"Snow flakes in the air and on the ground together. When all are in use, the oldest are reused. Lower it if you need the performance.",
+			"Ash flakes in the air and on the ground together. When all are in use, the oldest are reused. Lower it if you need the performance.",
 		};
-		constexpr std::array<const char*, kKinds> kOnLabel{ "Leaves on", "Green leaves on", "Dust on", "Rocks on", "Snow on" };
-		constexpr std::array<const char*, kKinds> kAddLabel{ "+ Leaves", "+ Green leaves", "+ Dust", "+ Rocks", "+ Snow" };
+		constexpr std::array<const char*, kKinds> kOnLabel{ "Leaves on", "Green leaves on", "Dust on", "Rocks on", "Snow on", "Ash on" };
+		constexpr std::array<const char*, kKinds> kAddLabel{ "+ Leaves", "+ Green leaves", "+ Dust", "+ Rocks", "+ Snow", "+ Ash" };
 		constexpr std::array<const char*, kKinds> kOffText{ "Leaves are switched off on the Settings page.", "Green leaves are switched off on the Settings page.",
-			"Dust is switched off on the Settings page.", "Rocks are switched off on the Settings page.", "Snow is switched off on the Settings page." };
+			"Dust is switched off on the Settings page.", "Rocks are switched off on the Settings page.", "Snow is switched off on the Settings page.",
+			"Ash is switched off on the Settings page." };
 		constexpr std::array<const char*, kKinds> kRemoveTip{ "Remove it from Leaves", "Remove it from Green leaves", "Remove it from Dust", "Remove it from Rocks",
-			"Remove it from Snow" };
+			"Remove it from Snow", "Remove it from Ash" };
 		constexpr std::array<const char*, Seasons::kSeasons> kSeasonNames{ "no season", "Winter", "Spring", "Summer", "Autumn" };
 
 		// translated label with a fixed ImGui id (it must not change with the language)
@@ -137,8 +141,10 @@ namespace Menu
 			}
 			Text("%s", st.exterior && !st.grounded ? T("  (in the air or in water)") : "");
 			Text("%s", F("Speed: {:.0f} units/s", st.speed).c_str());
-			Text("%s", F("Flying: {} leaves, {} green leaves, {} dust, {} rocks, {} snow", st.flying[0], st.flying[1], st.flying[2], st.flying[3], st.flying[4]).c_str());
-			Text("%s", F("On the ground: {} leaves, {} green leaves, {} dust, {} rocks, {} snow", st.landed[0], st.landed[1], st.landed[2], st.landed[3], st.landed[4]).c_str());
+			Text("%s", F("Flying: {} leaves, {} green leaves, {} dust, {} rocks, {} snow, {} ash", st.flying[0], st.flying[1], st.flying[2], st.flying[3], st.flying[4],
+								st.flying[5]).c_str());
+			Text("%s", F("On the ground: {} leaves, {} green leaves, {} dust, {} rocks, {} snow, {} ash", st.landed[0], st.landed[1], st.landed[2], st.landed[3],
+								st.landed[4], st.landed[5]).c_str());
 			Text("%s", F("NPCs and creatures kicking things up: {}", st.npcs).c_str());
 			if (Seasons::Found()) {
 				Text("%s", F("Season (Seasons of Skyrim): {}", T(kSeasonNames[Seasons::Current()])).c_str());
@@ -180,7 +186,7 @@ namespace Menu
 			const auto       seconds = std::format("%.1f {}", T("s"));
 
 			Changed(Checkbox(Id("Enable the effect").c_str(), &s.enabled));
-			Hint("Leaves, dust and rocks fly up from the ground when you, NPCs and creatures walk, run or ride over it.");
+			Hint("Leaves, dust, rocks, snow and ash fly up from the ground when you, NPCs and creatures walk, run or ride over it.");
 			if (!s.enabled) {
 				BeginDisabled();
 			}
@@ -215,7 +221,7 @@ namespace Menu
 
 			Heading("Sounds");
 			Changed(Checkbox(Id("Sounds on").c_str(), &s.sounds));
-			Hint("A soft rustle of leaves flying up and sailing past, and little stones ticking as pebbles land. Dust and snow are quiet. Uses the game's sound effects volume.");
+			Hint("A soft rustle of leaves flying up and sailing past, and little stones ticking as pebbles land. Dust, snow and ash are quiet. Uses the game's sound effects volume.");
 			if (!s.sounds) {
 				BeginDisabled();
 			}
@@ -278,6 +284,17 @@ namespace Menu
 			}
 			Changed(SliderFloat(Id("Body strength").c_str(), &s.bodyStrength, 0.2f, 3.0f, "%.2fx"));
 			if (!s.bodies) {
+				EndDisabled();
+			}
+
+			Heading("Dragons");
+			Changed(Checkbox(Id("Dragons stir things up").c_str(), &s.dragons));
+			Hint("A dragon landing throws up a big ring of whatever lies around it, and taking off another. Its wing beats blow the ground below while it hovers, lands or takes off, and gliding low it stirs up a strip behind it. A bite blows a blast from its jaws along the ground, its tail and wings sweeping the ground throw everything up, and its tail smashing down throws up a ring. Dragons count up to 6000 units away, besides the NPC limit.");
+			if (!s.dragons) {
+				BeginDisabled();
+			}
+			Changed(SliderFloat(Id("Dragon strength").c_str(), &s.dragonStrength, 0.2f, 3.0f, "%.2fx"));
+			if (!s.dragons) {
 				EndDisabled();
 			}
 

@@ -4,14 +4,16 @@ This mod adds particle effects to movements and actions based on the ground bene
 
 ## Features
 
-- Walking, running, sprinting, and riding kick up different amounts of particles. Leaves flutter down, rocks bounce, dust lingers in the air, and snow flakes melt soon after landing.
-- Autumn leaves in Riften's forests, green leaves in the pine forests, snow on snowy ground, dust on dirt and mud, and pebbles on rocky ground.
+- Walking, running, sprinting, and riding kick up different amounts of particles. Leaves flutter down, rocks bounce, dust lingers in the air, and snow and ash flakes settle soon after landing.
+- Autumn leaves in Riften's forests, green leaves in the pine forests, snow on snowy ground, ash on Solstheim's volcanic ash, dust on dirt and mud, and pebbles on rocky ground.
+- No dust clouds while it rains.
 - Cliffs, mountains, rocks, and ground pieces are detected too. Standing on top of logs, buildings, or docks kicks up nothing.
 - Leaves float on water and drift.
 - Soft sounds of rustling leaves and ticking pebbles.
 - Horses, NPCs, and creatures also interact with the ground. Giants and mammoths create larger effects.
 - Weapon swings stir up leaves from the ground.
 - Shouts push particles away from the player. Explosions such as fireballs blow them away in a ring.
+- Dragons stir up the ground when they land, take off, or beat their wings low, and their bites, tail whips, and wing swipes throw everything up.
 - Strong winds can lift leaves and carry them through the air. **Dynamic Wind Framework - SKSE Plugin is highly recommended.**
 - Support for Northern Roads.
 - Support for Seasons of Skyrim: the particles follow the season's landscape, so snowy winter ground kicks up snow instead of leaves.

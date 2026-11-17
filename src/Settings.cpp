@@ -10,7 +10,7 @@ namespace Settings
 
 		constexpr int kVersion = 1;
 
-		constexpr std::array<const char*, kKinds> kKeys{ "leaves", "greenLeaves", "dust", "rocks", "snow" };
+		constexpr std::array<const char*, kKinds> kKeys{ "leaves", "greenLeaves", "dust", "rocks", "snow", "ash" };
 
 		Values                     values;
 		Values                     saved;
@@ -144,6 +144,7 @@ namespace Settings
 			a_values.shoutStrength = std::clamp(a_values.shoutStrength, 0.0f, 4.0f);
 			a_values.slamStrength = std::clamp(a_values.slamStrength, 0.0f, 4.0f);
 			a_values.bodyStrength = std::clamp(a_values.bodyStrength, 0.0f, 4.0f);
+			a_values.dragonStrength = std::clamp(a_values.dragonStrength, 0.0f, 4.0f);
 			a_values.explosionStrength = std::clamp(a_values.explosionStrength, 0.0f, 4.0f);
 			a_values.windAmount = std::clamp(a_values.windAmount, 0.0f, 5.0f);
 			a_values.swingStrength = std::clamp(a_values.swingStrength, 0.0f, 4.0f);
@@ -195,6 +196,8 @@ namespace Settings
 			Read(root, "explosionStrength", values.explosionStrength);
 			Read(root, "bodies", values.bodies);
 			Read(root, "bodyStrength", values.bodyStrength);
+			Read(root, "dragons", values.dragons);
+			Read(root, "dragonStrength", values.dragonStrength);
 			Read(root, "wind", values.wind);
 			Read(root, "windAmount", values.windAmount);
 			Read(root, "windFlip", values.windFlip);
@@ -244,6 +247,8 @@ namespace Settings
 			{ "explosionStrength", values.explosionStrength },
 			{ "bodies", values.bodies },
 			{ "bodyStrength", values.bodyStrength },
+			{ "dragons", values.dragons },
+			{ "dragonStrength", values.dragonStrength },
 			{ "wind", values.wind },
 			{ "windAmount", values.windAmount },
 			{ "windFlip", values.windFlip },

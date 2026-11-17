@@ -354,6 +354,7 @@ FLAKE_EDGE = np.array([196, 206, 222]) / 255.0       # the thin edges a little b
 FLAKE_SIZE = 2.4                                     # mesh size in game units
 
 
+
 def build_snow():
     rng = np.random.default_rng(7)
     size = 2 * FLAKE
@@ -483,6 +484,11 @@ def debris_shapes():
         r, c = divmod(cell, 2)
         box = (c / 2, r / 2, (c + 1) / 2, (r + 1) / 2)
         out.append((f"SnowFlake{cell}", card_vertices(box, FLAKE_SIZE, FLAKE_SIZE, -0.08, -0.08, g3, g3, 0), clump_tris, "flake"))
+    # ash flakes: the same over the ash atlas (tools/make_ash.py)
+    for cell in range(4):
+        r, c = divmod(cell, 2)
+        box = (c / 2, r / 2, (c + 1) / 2, (r + 1) / 2)
+        out.append((f"AshFlake{cell}", card_vertices(box, FLAKE_SIZE, FLAKE_SIZE, -0.08, -0.08, g3, g3, 0), clump_tris, "ash"))
     return out
 
 
@@ -513,6 +519,7 @@ MATERIALS = {
     "clump": (r"textures\ResponsiveGrounds\Debris.dds", r"textures\ResponsiveGrounds\Debris_n.dds", False),
     "puff": (r"textures\ResponsiveGrounds\Debris.dds", r"textures\ResponsiveGrounds\Debris_n.dds", True),
     "flake": (r"textures\ResponsiveGrounds\Snow.dds", r"textures\ResponsiveGrounds\Snow_n.dds", True),
+    "ash": (r"textures\ResponsiveGrounds\Ash.dds", r"textures\ResponsiveGrounds\Snow_n.dds", True),
 }
 
 

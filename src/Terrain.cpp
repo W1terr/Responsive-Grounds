@@ -13,22 +13,22 @@ namespace Terrain
 		std::vector<Covers>                                materialStrengths;  // per material and kind, 0 when it doesn't count
 
 		using M = RE::MATERIAL_ID;
-		//                 leaves, green leaves (x their land cover around)  dust  rocks  snow
+		//                 leaves, green leaves (x their land cover around)  dust  rocks  snow  ash
 		const std::vector<Material> kMaterials{
-			{ "Snow covered", {}, { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f } },  // a snow layer, or a snowy model
-			{ "Ash covered", {}, { 0.0f, 0.0f, 0.7f, 0.0f, 0.0f } },  // Solstheim's ash layer
-			{ "Rock", {}, { 0.0f, 0.0f, 0.0f, 0.7f, 0.0f } },         // natural rocks and cliffs without a layer
-			{ "Snow", { M::kSnow, M::kSnowStairs }, { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f } },
-			{ "Ice", { M::kIce, M::kIceForm }, { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } },
-			{ "Dirt", { M::kDirt }, { 0.7f, 0.7f, 0.8f, 0.0f, 0.0f } },
-			{ "Mud", { M::kMud }, { 0.4f, 0.4f, 0.6f, 0.0f, 0.0f } },
-			{ "Gravel", { M::kGravel }, { 0.6f, 0.6f, 0.5f, 0.6f, 0.0f } },
-			{ "Sand", { M::kSand }, { 0.0f, 0.0f, 0.7f, 0.0f, 0.0f } },
-			{ "Ash", { M::kAsh }, { 0.0f, 0.0f, 0.7f, 0.0f, 0.0f } },
-			{ "Grass", { M::kGrass }, { 0.8f, 0.8f, 0.0f, 0.0f, 0.0f } },
+			{ "Snow covered", {}, { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f } },  // a snow layer, or a snowy model
+			{ "Ash covered", {}, { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f } },  // Solstheim's ash layer
+			{ "Rock", {}, { 0.0f, 0.0f, 0.0f, 0.7f, 0.0f, 0.0f } },         // natural rocks and cliffs without a layer
+			{ "Snow", { M::kSnow, M::kSnowStairs }, { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f } },
+			{ "Ice", { M::kIce, M::kIceForm }, { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } },
+			{ "Dirt", { M::kDirt }, { 0.7f, 0.7f, 0.8f, 0.0f, 0.0f, 0.0f } },
+			{ "Mud", { M::kMud }, { 0.4f, 0.4f, 0.6f, 0.0f, 0.0f, 0.0f } },
+			{ "Gravel", { M::kGravel }, { 0.6f, 0.6f, 0.5f, 0.6f, 0.0f, 0.0f } },
+			{ "Sand", { M::kSand }, { 0.0f, 0.0f, 0.7f, 0.0f, 0.0f, 0.0f } },
+			{ "Ash", { M::kAsh }, { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f } },
+			{ "Grass", { M::kGrass }, { 0.8f, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f } },
 			{ "Stone", { M::kStone, M::kStoneHeavy, M::kStoneBroken, M::kStoneStairs, M::kStoneAsStairs, M::kStoneStairsBroken, M::kBoulderSmall, M::kBoulderLarge },
-				{ 0.6f, 0.6f, 0.0f, 0.0f, 0.0f } },
-			{ "Wood", { M::kWood, M::kWoodHeavy, M::kWoodLight, M::kWoodStairs, M::kWoodAsStairs }, { 0.5f, 0.5f, 0.0f, 0.0f, 0.0f } },
+				{ 0.6f, 0.6f, 0.0f, 0.0f, 0.0f, 0.0f } },
+			{ "Wood", { M::kWood, M::kWoodHeavy, M::kWoodLight, M::kWoodStairs, M::kWoodAsStairs }, { 0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f } },
 		};
 
 		std::string Lower(std::string_view a_text)
@@ -47,22 +47,22 @@ namespace Terrain
 			const char* name;  // the file name, or a part of it
 			bool        part;
 			const char* label;
-			Covers      strength;  // leaves, green leaves (x that kind's land around), dust, rocks, snow
+			Covers      strength;  // leaves, green leaves (x that kind's land around), dust, rocks, snow, ash
 		};
 		// first match wins (the winter roads before the trails); no leaves by default (they can be turned on per road)
 		const std::array<RoadKind, 12> kRoadKinds{ {
-			{ "_winter", true, "Winter road", { 0.0f, 0.0f, 0.25f, 0.0f, 0.5f } },
-			{ "grounddirt01_trail", true, "Dirt road edge", { 0.0f, 0.0f, 0.7f, 0.2f, 0.0f } },
-			{ "grounddirt01.dds", false, "Dirt road", { 0.0f, 0.0f, 0.8f, 0.25f, 0.0f } },
-			{ "dirtdry.dds", false, "Dry dirt road", { 0.0f, 0.0f, 0.9f, 0.2f, 0.0f } },
-			{ "groundmud01.dds", false, "Mud road", { 0.0f, 0.0f, 0.6f, 0.0f, 0.0f } },
-			{ "ratwaybwall01.dds", false, "Helgen mud", { 0.0f, 0.0f, 0.6f, 0.0f, 0.0f } },
-			{ "groundstone01.dds", false, "Stone road", { 0.0f, 0.0f, 0.2f, 0.25f, 0.0f } },
-			{ "volcanictundra01.dds", false, "Volcanic road", { 0.0f, 0.0f, 0.5f, 0.4f, 0.0f } },
-			{ "wrstonefloor01.dds", false, "Whiterun stone", { 0.0f, 0.0f, 0.15f, 0.0f, 0.0f } },
-			{ "riftenplazabrick02.dds", false, "Riften brick", { 0.0f, 0.0f, 0.1f, 0.0f, 0.0f } },
-			{ "dwestonefloor02.dds", false, "Dwemer stone", { 0.0f, 0.0f, 0.1f, 0.0f, 0.0f } },
-			{ "glaciersnow01.dds", false, "Glacier snow", { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f } },
+			{ "_winter", true, "Winter road", { 0.0f, 0.0f, 0.25f, 0.0f, 0.5f, 0.0f } },
+			{ "grounddirt01_trail", true, "Dirt road edge", { 0.0f, 0.0f, 0.7f, 0.2f, 0.0f, 0.0f } },
+			{ "grounddirt01.dds", false, "Dirt road", { 0.0f, 0.0f, 0.8f, 0.25f, 0.0f, 0.0f } },
+			{ "dirtdry.dds", false, "Dry dirt road", { 0.0f, 0.0f, 0.9f, 0.2f, 0.0f, 0.0f } },
+			{ "groundmud01.dds", false, "Mud road", { 0.0f, 0.0f, 0.6f, 0.0f, 0.0f, 0.0f } },
+			{ "ratwaybwall01.dds", false, "Helgen mud", { 0.0f, 0.0f, 0.6f, 0.0f, 0.0f, 0.0f } },
+			{ "groundstone01.dds", false, "Stone road", { 0.0f, 0.0f, 0.2f, 0.25f, 0.0f, 0.0f } },
+			{ "volcanictundra01.dds", false, "Volcanic road", { 0.0f, 0.0f, 0.5f, 0.4f, 0.0f, 0.0f } },
+			{ "wrstonefloor01.dds", false, "Whiterun stone", { 0.0f, 0.0f, 0.15f, 0.0f, 0.0f, 0.0f } },
+			{ "riftenplazabrick02.dds", false, "Riften brick", { 0.0f, 0.0f, 0.1f, 0.0f, 0.0f, 0.0f } },
+			{ "dwestonefloor02.dds", false, "Dwemer stone", { 0.0f, 0.0f, 0.1f, 0.0f, 0.0f, 0.0f } },
+			{ "glaciersnow01.dds", false, "Glacier snow", { 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f } },
 		} };
 
 		const RoadKind* RoadKindOf(std::string_view a_name)
@@ -267,6 +267,19 @@ namespace Terrain
 			}
 			if (name.contains("path") || name.contains("dirt")) {
 				return 0.7f;
+			}
+			return 1.0f;
+		case Kind::kAsh:
+			// Solstheim's volcanic ash (Dragonborn: volcanic_ash_01, 03, 04, 05; with grass: volcanic_ash_tundra_*; with
+			// rocks: volcanic_ash_rocks_01), and textures named after ash or ashlands
+			if (!name.contains("volcanic_ash") && !name.starts_with("ash") && !name.contains("_ash") && !name.contains("ashland")) {
+				return 0.0f;
+			}
+			if (name.contains("rock")) {
+				return 0.5f;
+			}
+			if (name.contains("tundra") || name.contains("grass")) {
+				return 0.6f;
 			}
 			return 1.0f;
 		default:
